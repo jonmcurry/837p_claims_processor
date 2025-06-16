@@ -1,4 +1,4 @@
-"""High-performance async processing pipeline for claims."""
+"""Ultra high-performance async processing pipeline for 100k+ claims/15s."""
 
 import asyncio
 import time
@@ -6,10 +6,15 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+import psutil
+import gc
+from concurrent.futures import ThreadPoolExecutor
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from aiocache import cached, Cache
+from aiocache.serializers import PickleSerializer
 
 from src.core.config import settings
 from src.core.database.base import get_postgres_session, get_sqlserver_session
@@ -24,6 +29,13 @@ from src.core.database.models import (
 from src.processing.calculations.rvu_calculator import RVUCalculator
 from src.processing.ml_pipeline.predictor import ClaimPredictor
 from src.processing.validation.rule_engine import ClaimValidator
+from src.monitoring.metrics.prometheus_metrics import (
+    claims_processed_total,
+    claims_failed_total,
+    processing_latency,
+    throughput_gauge,
+    batch_processing_time
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -61,83 +73,169 @@ class ClaimProcessingPipeline:
         self.predictor = ClaimPredictor()
         self.calculator = RVUCalculator()
         
-        # Pipeline stage configurations
+        # Optimized pipeline stage configurations for 100k+ claims/15s
+        # Target: 6,667 claims/second requires maximum parallelization
+        cpu_count = psutil.cpu_count(logical=True)
+        memory_gb = psutil.virtual_memory().total / (1024**3)
+        
+        # Dynamic worker allocation based on system resources
+        max_workers = min(cpu_count * 2, 32)  # Cap at 32 to prevent resource exhaustion
+        
         self.stages = {
-            "data_fetch": PipelineStage("Data Fetch", 5, 1000, 60),
-            "validation": PipelineStage("Validation", 10, 500, 30),
-            "ml_prediction": PipelineStage("ML Prediction", 3, 100, 45),
-            "calculation": PipelineStage("RVU Calculation", 8, 200, 20),
-            "data_transfer": PipelineStage("Data Transfer", 4, 250, 40),
+            "data_fetch": PipelineStage("Data Fetch", max_workers // 4, 2000, 45),
+            "validation": PipelineStage("Validation", max_workers, 1000, 20),
+            "ml_prediction": PipelineStage("ML Prediction", max_workers // 2, 500, 30),
+            "calculation": PipelineStage("RVU Calculation", max_workers, 1000, 15),
+            "data_transfer": PipelineStage("Data Transfer", max_workers // 2, 500, 25),
+        }
+        
+        # Initialize thread pool for CPU-intensive operations
+        self.thread_pool = ThreadPoolExecutor(max_workers=max_workers)
+        
+        # Memory optimization settings
+        self.memory_threshold = memory_gb * 0.8  # Use 80% of available memory
+        self.batch_memory_limit = min(10000, int(memory_gb * 1000))  # Claims per batch
+        
+        # Performance tracking
+        self.performance_stats = {
+            "total_processed": 0,
+            "total_failed": 0,
+            "average_throughput": 0.0,
+            "peak_throughput": 0.0
         }
 
     async def process_batch(self, batch_id: str) -> ProcessingResult:
-        """Process a complete batch of claims through the pipeline."""
-        start_time = time.time()
+        """Process a complete batch of claims through ultra high-performance pipeline."""
+        start_time = time.perf_counter()
         
-        logger.info("Starting batch processing", batch_id=batch_id)
-        
-        try:
-            # Get batch metadata
-            async with get_postgres_session() as session:
-                batch = await self._get_batch_metadata(session, batch_id)
+        # Start Prometheus metrics tracking
+        with batch_processing_time.time():
+            logger.info("Starting ultra high-performance batch processing", 
+                       batch_id=batch_id,
+                       target_throughput="6667 claims/sec")
+            
+            try:
+                # Get batch metadata with connection pooling optimization
+                batch = await self._get_batch_metadata_optimized(batch_id)
                 if not batch:
                     raise ValueError(f"Batch {batch_id} not found")
 
-            # Initialize result tracking
-            result = ProcessingResult(
-                batch_id=batch_id,
-                total_claims=batch.total_claims,
-            )
+                # Initialize result tracking
+                result = ProcessingResult(
+                    batch_id=batch_id,
+                    total_claims=batch.total_claims,
+                )
 
-            # Update batch status to processing
-            await self._update_batch_status(batch_id, ProcessingStatus.PROCESSING)
+                # Check memory requirements and adjust batch size if needed
+                if batch.total_claims > self.batch_memory_limit:
+                    logger.warning("Large batch detected, will process in chunks",
+                                 batch_id=batch_id,
+                                 total_claims=batch.total_claims,
+                                 chunk_size=self.batch_memory_limit)
+                    return await self._process_large_batch_chunked(batch_id, batch)
 
-            # Execute pipeline stages
-            claims = await self._fetch_claims(batch_id)
-            logger.info("Fetched claims for processing", 
-                       batch_id=batch_id, 
-                       claim_count=len(claims))
+                # Update batch status to processing
+                await self._update_batch_status(batch_id, ProcessingStatus.PROCESSING)
 
-            # Stage 1: Validation (parallel processing)
-            validated_claims, validation_failures = await self._validate_claims_parallel(claims)
-            result.failed_claims += len(validation_failures)
-            
-            # Stage 2: ML Prediction (parallel processing)
-            predicted_claims, prediction_failures = await self._predict_claims_parallel(validated_claims)
-            result.failed_claims += len(prediction_failures)
-            
-            # Stage 3: RVU Calculation (parallel processing)
-            calculated_claims, calculation_failures = await self._calculate_claims_parallel(predicted_claims)
-            result.failed_claims += len(calculation_failures)
-            
-            # Stage 4: Data Transfer to Production DB (parallel processing)
-            transfer_success, transfer_failures = await self._transfer_claims_parallel(calculated_claims)
-            result.failed_claims += len(transfer_failures)
-            result.processed_claims = len(transfer_success)
+                # Execute ultra high-performance pipeline with concurrent stages
+                claims = await self._fetch_claims_optimized(batch_id)
+                logger.info("Fetched claims for ultra high-speed processing", 
+                           batch_id=batch_id, 
+                           claim_count=len(claims))
 
-            # Calculate metrics
-            result.processing_time = time.time() - start_time
-            result.throughput = result.total_claims / result.processing_time if result.processing_time > 0 else 0
+                # Concurrent pipeline execution for maximum throughput
+                stage_tasks = []
+                
+                # Stage 1: Validation (ultra parallel processing)
+                validation_task = asyncio.create_task(
+                    self._validate_claims_ultra_parallel(claims)
+                )
+                stage_tasks.append(("validation", validation_task))
+                
+                validated_claims, validation_failures = await validation_task
+                result.failed_claims += len(validation_failures)
+                claims_failed_total.inc(len(validation_failures))
+                
+                if not validated_claims:
+                    logger.warning("No claims passed validation", batch_id=batch_id)
+                    await self._finalize_batch(batch_id, result)
+                    return result
+                
+                # Stage 2: ML Prediction (optimized batch processing)
+                prediction_task = asyncio.create_task(
+                    self._predict_claims_ultra_parallel(validated_claims)
+                )
+                stage_tasks.append(("ml_prediction", prediction_task))
+                
+                predicted_claims, prediction_failures = await prediction_task
+                result.failed_claims += len(prediction_failures)
+                claims_failed_total.inc(len(prediction_failures))
+                
+                # Stage 3: RVU Calculation (vectorized processing)
+                calculation_task = asyncio.create_task(
+                    self._calculate_claims_ultra_parallel(predicted_claims)
+                )
+                stage_tasks.append(("calculation", calculation_task))
+                
+                calculated_claims, calculation_failures = await calculation_task
+                result.failed_claims += len(calculation_failures)
+                claims_failed_total.inc(len(calculation_failures))
+                
+                # Stage 4: Data Transfer (bulk insert optimization)
+                transfer_task = asyncio.create_task(
+                    self._transfer_claims_ultra_parallel(calculated_claims)
+                )
+                stage_tasks.append(("data_transfer", transfer_task))
+                
+                transfer_success, transfer_failures = await transfer_task
+                result.failed_claims += len(transfer_failures)
+                result.processed_claims = len(transfer_success)
+                
+                # Update Prometheus metrics
+                claims_processed_total.inc(result.processed_claims)
+                claims_failed_total.inc(len(transfer_failures))
 
-            # Update batch completion status
-            await self._finalize_batch(batch_id, result)
-            
-            # Record performance metrics
-            await self._record_performance_metrics(result)
+                # Calculate performance metrics
+                result.processing_time = time.perf_counter() - start_time
+                result.throughput = result.total_claims / result.processing_time if result.processing_time > 0 else 0
+                
+                # Update performance stats
+                self.performance_stats["total_processed"] += result.processed_claims
+                self.performance_stats["total_failed"] += result.failed_claims
+                self.performance_stats["peak_throughput"] = max(
+                    self.performance_stats["peak_throughput"], 
+                    result.throughput
+                )
+                
+                # Update Prometheus gauges
+                throughput_gauge.set(result.throughput)
+                processing_latency.observe(result.processing_time)
 
-            logger.info("Batch processing completed",
-                       batch_id=batch_id,
-                       processed=result.processed_claims,
-                       failed=result.failed_claims,
-                       throughput=result.throughput,
-                       duration=result.processing_time)
+                # Update batch completion status
+                await self._finalize_batch(batch_id, result)
+                
+                # Record performance metrics
+                await self._record_performance_metrics(result)
+                
+                # Trigger garbage collection for memory optimization
+                if result.total_claims > 10000:
+                    gc.collect()
 
-            return result
+                logger.info("Ultra high-performance batch processing completed",
+                           batch_id=batch_id,
+                           processed=result.processed_claims,
+                           failed=result.failed_claims,
+                           throughput=f"{result.throughput:.2f} claims/sec",
+                           duration=f"{result.processing_time:.3f}s",
+                           target_met=result.throughput >= 6667)
 
-        except Exception as e:
-            logger.exception("Batch processing failed", batch_id=batch_id, error=str(e))
-            await self._update_batch_status(batch_id, ProcessingStatus.FAILED)
-            raise
+                return result
+
+            except Exception as e:
+                logger.exception("Ultra high-performance batch processing failed", 
+                               batch_id=batch_id, error=str(e))
+                await self._update_batch_status(batch_id, ProcessingStatus.FAILED)
+                raise
 
     async def _fetch_claims(self, batch_id: str) -> List[Claim]:
         """Fetch claims for processing from staging database."""

@@ -1,0 +1,409 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Claims Processing - Production Dashboard",
+    "tags": ["claims", "production", "hipaa"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Claims Processing Overview",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "colorMode": "value",
+          "graphMode": "area",
+          "justifyMode": "auto"
+        },
+        "targets": [
+          {
+            "expr": "rate(claims_processed_total[5m]) * 60",
+            "legendFormat": "Claims/Min Processed",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(claims_failed_total[5m]) * 60",
+            "legendFormat": "Claims/Min Failed",
+            "refId": "B"
+          },
+          {
+            "expr": "batch_throughput_claims_per_second",
+            "legendFormat": "Current Throughput (claims/sec)",
+            "refId": "C"
+          },
+          {
+            "expr": "processing_target_adherence_percent",
+            "legendFormat": "Target Adherence %",
+            "refId": "D"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Processing Throughput Target (100k claims/15s = 6,667 claims/sec)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "options": {
+          "tooltip": {"mode": "single"},
+          "legend": {"displayMode": "table", "placement": "bottom"}
+        },
+        "targets": [
+          {
+            "expr": "batch_throughput_claims_per_second",
+            "legendFormat": "Current Throughput",
+            "refId": "A"
+          },
+          {
+            "expr": "vector(6667)",
+            "legendFormat": "Target (6,667 claims/sec)",
+            "refId": "B"
+          }
+        ],
+        "thresholds": [
+          {
+            "color": "red",
+            "value": 0
+          },
+          {
+            "color": "yellow",
+            "value": 5000
+          },
+          {
+            "color": "green",
+            "value": 6667
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Processing Latency Distribution",
+        "type": "heatmap",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(claims_processing_latency_seconds_bucket[5m])",
+            "legendFormat": "{{le}}s",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Claims Success Rate",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 16},
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "targets": [
+          {
+            "expr": "(rate(claims_processed_total[5m]) / (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]))) * 100",
+            "legendFormat": "Success Rate %",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 90},
+                {"color": "green", "value": 95}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Revenue Processed (Last Hour)",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(increase(claims_revenue_dollars_total[1h]))",
+            "legendFormat": "Revenue ($)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Validation Pass Rate by Category",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "validation_pass_rate_percent",
+            "legendFormat": "{{rule_category}}",
+            "refId": "A"
+          }
+        ],
+        "thresholds": [
+          {
+            "color": "red",
+            "value": 0
+          },
+          {
+            "color": "yellow",
+            "value": 90
+          },
+          {
+            "color": "green",
+            "value": 95
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Database Performance",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "database_query_duration_seconds",
+            "legendFormat": "Query Duration - {{query_type}}",
+            "refId": "A"
+          },
+          {
+            "expr": "database_connections_active",
+            "legendFormat": "Active Connections",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "ML Model Performance",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 24},
+        "targets": [
+          {
+            "expr": "ml_prediction_accuracy_percent",
+            "legendFormat": "Accuracy % - {{model_name}}",
+            "refId": "A"
+          },
+          {
+            "expr": "ml_prediction_latency_seconds",
+            "legendFormat": "Latency - {{model_name}}",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "System Resources",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 24},
+        "targets": [
+          {
+            "expr": "cpu_usage_percent",
+            "legendFormat": "CPU %",
+            "refId": "A"
+          },
+          {
+            "expr": "memory_usage_megabytes / 1024",
+            "legendFormat": "Memory GB",
+            "refId": "B"
+          },
+          {
+            "expr": "disk_usage_percent",
+            "legendFormat": "Disk %",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Failed Claims by Category",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+        "targets": [
+          {
+            "expr": "sum by (failure_category) (rate(claims_failed_total[1h]))",
+            "legendFormat": "{{failure_category}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Batch Size Distribution",
+        "type": "histogram",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+        "targets": [
+          {
+            "expr": "batch_size_claims_bucket",
+            "legendFormat": "{{le}} claims",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Security & Compliance",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 40},
+        "targets": [
+          {
+            "expr": "rate(phi_access_total[5m])",
+            "legendFormat": "PHI Access Rate - {{user_role}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(failed_login_attempts_total[5m])",
+            "legendFormat": "Failed Logins",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(unauthorized_access_attempts_total[5m])",
+            "legendFormat": "Unauthorized Access",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Cache Performance",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 40},
+        "targets": [
+          {
+            "expr": "cache_hit_ratio_percent",
+            "legendFormat": "Hit Ratio % - {{cache_type}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(cache_hits_total[5m])",
+            "legendFormat": "Hits/sec - {{cache_type}}",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(cache_misses_total[5m])",
+            "legendFormat": "Misses/sec - {{cache_type}}",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "API Performance",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 40},
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "Requests/sec - {{endpoint}}",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile latency",
+            "refId": "B"
+          }
+        ]
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "facility",
+          "type": "query",
+          "query": "label_values(claims_processed_total, facility_id)",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "options": [],
+          "refresh": 1,
+          "includeAll": true,
+          "multi": true
+        },
+        {
+          "name": "timeRange",
+          "type": "interval",
+          "current": {
+            "text": "5m",
+            "value": "5m"
+          },
+          "options": [
+            {"text": "1m", "value": "1m"},
+            {"text": "5m", "value": "5m"},
+            {"text": "10m", "value": "10m"},
+            {"text": "30m", "value": "30m"},
+            {"text": "1h", "value": "1h"}
+          ]
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Deployments",
+          "datasource": "Prometheus",
+          "expr": "changes(application_info[1h]) > 0",
+          "titleFormat": "Deployment",
+          "textFormat": "Application deployed"
+        },
+        {
+          "name": "Incidents",
+          "datasource": "Prometheus", 
+          "expr": "application_health_status != 1",
+          "titleFormat": "Health Issue",
+          "textFormat": "Application health degraded"
+        }
+      ]
+    },
+    "links": [
+      {
+        "title": "Failed Claims Dashboard",
+        "url": "/d/failed-claims",
+        "type": "dashboards"
+      },
+      {
+        "title": "Security Dashboard", 
+        "url": "/d/security",
+        "type": "dashboards"
+      },
+      {
+        "title": "Infrastructure Dashboard",
+        "url": "/d/infrastructure", 
+        "type": "dashboards"
+      }
+    ]
+  }
+}

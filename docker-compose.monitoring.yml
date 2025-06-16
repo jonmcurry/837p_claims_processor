@@ -1,0 +1,334 @@
+# Docker Compose for Production Monitoring Stack
+# Prometheus + Grafana + AlertManager for Claims Processing System
+
+version: '3.8'
+
+services:
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: claims-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alerting/prometheus_alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--log.level=info'
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=prometheus"
+      - "com.claims.environment=production"
+
+  # Grafana - Visualization and Dashboards
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: claims-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel,grafana-clock-panel
+      - GF_SMTP_ENABLED=true
+      - GF_SMTP_HOST=smtp.company.com:587
+      - GF_SMTP_USER=grafana@company.com
+      - GF_SMTP_PASSWORD=smtp_password
+      - GF_SMTP_FROM_ADDRESS=grafana@company.com
+      - GF_SMTP_FROM_NAME=Claims Processing Alerts
+      - GF_DATABASE_TYPE=postgres
+      - GF_DATABASE_HOST=postgres:5432
+      - GF_DATABASE_NAME=grafana
+      - GF_DATABASE_USER=grafana
+      - GF_DATABASE_PASSWORD=grafana_password
+      - GF_SECURITY_SECRET_KEY=grafana_secret_key_here
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_SECURITY_COOKIE_SECURE=true
+      - GF_SECURITY_COOKIE_SAMESITE=strict
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - postgres
+    labels:
+      - "com.claims.service=grafana"
+      - "com.claims.environment=production"
+
+  # AlertManager - Alert Management and Routing
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: claims-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alerting/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+      - '--cluster.advertise-address=0.0.0.0:9093'
+      - '--log.level=info'
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=alertmanager"
+      - "com.claims.environment=production"
+
+  # Node Exporter - System Metrics
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    container_name: claims-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.cpu'
+      - '--collector.diskstats'
+      - '--collector.filesystem'
+      - '--collector.loadavg'
+      - '--collector.meminfo'
+      - '--collector.netdev'
+      - '--collector.stat'
+      - '--collector.time'
+      - '--collector.uname'
+      - '--collector.vmstat'
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=node-exporter"
+      - "com.claims.environment=production"
+
+  # Postgres Exporter - Database Metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.14.0
+    container_name: claims-postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      - DATA_SOURCE_NAME=postgresql://claims_user:claims_password@postgres:5432/claims_processing?sslmode=disable
+      - PG_EXPORTER_EXTEND_QUERY_PATH=/etc/postgres_exporter/queries.yaml
+    volumes:
+      - ./monitoring/exporters/postgres_queries.yaml:/etc/postgres_exporter/queries.yaml
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    labels:
+      - "com.claims.service=postgres-exporter"
+      - "com.claims.environment=production"
+
+  # Redis Exporter - Cache Metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.54.0
+    container_name: claims-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=redis_password
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - redis
+    labels:
+      - "com.claims.service=redis-exporter"
+      - "com.claims.environment=production"
+
+  # Blackbox Exporter - Endpoint Monitoring
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.24.0
+    container_name: claims-blackbox-exporter
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./monitoring/exporters/blackbox.yml:/etc/blackbox_exporter/config.yml
+    command:
+      - '--config.file=/etc/blackbox_exporter/config.yml'
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=blackbox-exporter"
+      - "com.claims.environment=production"
+
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: claims-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=loki"
+      - "com.claims.environment=production"
+
+  # Promtail - Log Collection
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: claims-promtail
+    volumes:
+      - ./monitoring/promtail/promtail.yml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - loki
+    labels:
+      - "com.claims.service=promtail"
+      - "com.claims.environment=production"
+
+  # Jaeger - Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.49
+    container_name: claims-jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=memory
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=jaeger"
+      - "com.claims.environment=production"
+
+  # Supporting Infrastructure
+  postgres:
+    image: postgres:15
+    container_name: claims-monitoring-postgres
+    environment:
+      - POSTGRES_USER=grafana
+      - POSTGRES_PASSWORD=grafana_password
+      - POSTGRES_DB=grafana
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=postgres"
+      - "com.claims.environment=production"
+
+  redis:
+    image: redis:7-alpine
+    container_name: claims-monitoring-redis
+    command: redis-server --requirepass redis_password --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - monitoring
+    restart: unless-stopped
+    labels:
+      - "com.claims.service=redis"
+      - "com.claims.environment=production"
+
+  # Nginx - Reverse Proxy for Monitoring Stack
+  nginx:
+    image: nginx:alpine
+    container_name: claims-monitoring-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./monitoring/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./monitoring/nginx/ssl:/etc/nginx/ssl
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - grafana
+      - prometheus
+      - alertmanager
+    labels:
+      - "com.claims.service=nginx"
+      - "com.claims.environment=production"
+
+networks:
+  monitoring:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/claims-monitoring/prometheus
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/claims-monitoring/grafana
+  alertmanager_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/claims-monitoring/alertmanager
+  loki_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/claims-monitoring/loki
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/claims-monitoring/postgres
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/claims-monitoring/redis

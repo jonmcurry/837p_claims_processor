@@ -1,0 +1,397 @@
+# Prometheus Alerting Rules for Claims Processing System
+# Critical production alerts for 100k+ claims/15s processing system
+
+groups:
+  - name: claims_processing_critical
+    rules:
+      # Processing Performance Alerts
+      - alert: ClaimsProcessingThroughputLow
+        expr: batch_throughput_claims_per_second < 5000
+        for: 2m
+        labels:
+          severity: critical
+          service: claims_processing
+          category: performance
+        annotations:
+          summary: "Claims processing throughput critically low"
+          description: "Current throughput {{ $value }} claims/sec is below 5000 (target: 6667 claims/sec). System may not meet SLA requirements."
+          runbook_url: "https://docs.company.com/runbooks/claims-throughput"
+
+      - alert: ClaimsProcessingThroughputCritical
+        expr: batch_throughput_claims_per_second < 3000
+        for: 1m
+        labels:
+          severity: critical
+          service: claims_processing
+          category: performance
+          page: true
+        annotations:
+          summary: "Claims processing throughput critically low - IMMEDIATE ACTION REQUIRED"
+          description: "Current throughput {{ $value }} claims/sec is below 3000. System is severely underperforming (target: 6667 claims/sec)."
+
+      - alert: ProcessingLatencyHigh
+        expr: histogram_quantile(0.95, rate(claims_processing_latency_seconds_bucket[5m])) > 30
+        for: 3m
+        labels:
+          severity: warning
+          service: claims_processing
+          category: performance
+        annotations:
+          summary: "Claims processing latency high"
+          description: "95th percentile processing latency is {{ $value }}s, exceeding 30s threshold."
+
+      - alert: BatchProcessingStalled
+        expr: increase(claims_processed_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: claims_processing
+          category: availability
+          page: true
+        annotations:
+          summary: "Batch processing completely stalled"
+          description: "No claims have been processed in the last 5 minutes. System may be down."
+
+      # Error Rate Alerts
+      - alert: ClaimsFailureRateHigh
+        expr: (rate(claims_failed_total[5m]) / (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]))) * 100 > 10
+        for: 3m
+        labels:
+          severity: warning
+          service: claims_processing
+          category: quality
+        annotations:
+          summary: "Claims failure rate high"
+          description: "Claims failure rate is {{ $value }}%, exceeding 10% threshold."
+
+      - alert: ClaimsFailureRateCritical
+        expr: (rate(claims_failed_total[5m]) / (rate(claims_processed_total[5m]) + rate(claims_failed_total[5m]))) * 100 > 25
+        for: 1m
+        labels:
+          severity: critical
+          service: claims_processing
+          category: quality
+          page: true
+        annotations:
+          summary: "Claims failure rate critically high"
+          description: "Claims failure rate is {{ $value }}%, exceeding 25% critical threshold."
+
+      - alert: ValidationFailureSpike
+        expr: rate(validation_failures_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: claims_processing
+          category: validation
+        annotations:
+          summary: "Validation failure spike detected"
+          description: "Validation failures rate is {{ $value }}/sec, indicating potential data quality issues."
+
+  - name: infrastructure_critical
+    rules:
+      # Database Alerts
+      - alert: DatabaseConnectionsHigh
+        expr: database_connections_active > 80
+        for: 2m
+        labels:
+          severity: warning
+          service: database
+          category: performance
+        annotations:
+          summary: "Database connections high"
+          description: "Active database connections ({{ $value }}) approaching limit."
+
+      - alert: DatabaseQueryLatencyHigh
+        expr: histogram_quantile(0.95, rate(database_query_duration_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          service: database
+          category: performance
+        annotations:
+          summary: "Database query latency high"
+          description: "95th percentile database query latency is {{ $value }}s."
+
+      - alert: DatabaseDeadlocks
+        expr: rate(database_deadlocks_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+          category: reliability
+        annotations:
+          summary: "Database deadlocks detected"
+          description: "Database deadlocks occurring at {{ $value }}/sec rate."
+
+      # System Resource Alerts
+      - alert: HighCPUUsage
+        expr: cpu_usage_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+          category: resources
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% on {{ $labels.host }}."
+
+      - alert: CriticalCPUUsage
+        expr: cpu_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+          category: resources
+          page: true
+        annotations:
+          summary: "Critical CPU usage"
+          description: "CPU usage is {{ $value }}% on {{ $labels.host }}. System may become unresponsive."
+
+      - alert: HighMemoryUsage
+        expr: (memory_usage_megabytes / 1024) > 12
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+          category: resources
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}GB on {{ $labels.host }}."
+
+      - alert: DiskSpaceHigh
+        expr: disk_usage_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+          category: resources
+        annotations:
+          summary: "Disk space usage high"
+          description: "Disk usage is {{ $value }}% on {{ $labels.mount_point }}."
+
+      - alert: DiskSpaceCritical
+        expr: disk_usage_percent > 95
+        for: 1m
+        labels:
+          severity: critical
+          service: system
+          category: resources
+          page: true
+        annotations:
+          summary: "Disk space critically low"
+          description: "Disk usage is {{ $value }}% on {{ $labels.mount_point }}. System may fail."
+
+  - name: security_hipaa_alerts
+    rules:
+      # Security Alerts
+      - alert: UnauthorizedPHIAccess
+        expr: rate(unauthorized_access_attempts_total{resource_type="phi"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: security
+          category: hipaa_violation
+          page: true
+        annotations:
+          summary: "Unauthorized PHI access attempts detected"
+          description: "{{ $value }} unauthorized PHI access attempts per second from {{ $labels.ip_address }}."
+
+      - alert: FailedLoginSpike
+        expr: rate(failed_login_attempts_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: security
+          category: authentication
+        annotations:
+          summary: "High rate of failed login attempts"
+          description: "{{ $value }} failed login attempts per second detected."
+
+      - alert: SuspiciousLoginPattern
+        expr: rate(failed_login_attempts_total[1m]) > 20
+        for: 30s
+        labels:
+          severity: critical
+          service: security
+          category: potential_attack
+          page: true
+        annotations:
+          summary: "Potential brute force attack detected"
+          description: "{{ $value }} failed login attempts per second indicates potential attack."
+
+      - alert: PHIAccessWithoutJustification
+        expr: rate(phi_access_total{business_justification="none"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: security
+          category: compliance
+        annotations:
+          summary: "PHI accessed without business justification"
+          description: "PHI access by {{ $labels.user_role }} without required business justification."
+
+      - alert: ComplianceViolation
+        expr: rate(compliance_violations_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: security
+          category: hipaa_violation
+          page: true
+        annotations:
+          summary: "HIPAA compliance violation detected"
+          description: "{{ $labels.violation_type }} compliance violation detected."
+
+  - name: ml_model_alerts
+    rules:
+      # ML Model Performance
+      - alert: MLModelAccuracyLow
+        expr: ml_prediction_accuracy_percent < 85
+        for: 5m
+        labels:
+          severity: warning
+          service: ml_pipeline
+          category: model_performance
+        annotations:
+          summary: "ML model accuracy degraded"
+          description: "{{ $labels.model_name }} accuracy dropped to {{ $value }}% (threshold: 85%)."
+
+      - alert: MLModelAccuracyCritical
+        expr: ml_prediction_accuracy_percent < 70
+        for: 2m
+        labels:
+          severity: critical
+          service: ml_pipeline
+          category: model_performance
+        annotations:
+          summary: "ML model accuracy critically low"
+          description: "{{ $labels.model_name }} accuracy is {{ $value }}% (critical threshold: 70%)."
+
+      - alert: MLPredictionLatencyHigh
+        expr: histogram_quantile(0.95, rate(ml_prediction_latency_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          service: ml_pipeline
+          category: performance
+        annotations:
+          summary: "ML prediction latency high"
+          description: "95th percentile ML prediction latency is {{ $value }}s."
+
+      - alert: MLModelErrors
+        expr: rate(ml_model_errors_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: ml_pipeline
+          category: reliability
+        annotations:
+          summary: "ML model errors detected"
+          description: "{{ $labels.model_name }} errors at {{ $value }}/sec rate."
+
+  - name: business_sla_alerts
+    rules:
+      # Business SLA Alerts
+      - alert: SLATargetMissed
+        expr: processing_target_adherence_percent < 90
+        for: 5m
+        labels:
+          severity: warning
+          service: claims_processing
+          category: sla
+        annotations:
+          summary: "SLA target adherence below threshold"
+          description: "Processing target adherence is {{ $value }}% (threshold: 90%)."
+
+      - alert: SLACriticalMiss
+        expr: processing_target_adherence_percent < 75
+        for: 2m
+        labels:
+          severity: critical
+          service: claims_processing
+          category: sla
+          page: true
+        annotations:
+          summary: "Critical SLA miss - escalation required"
+          description: "Processing target adherence is {{ $value }}% (critical threshold: 75%)."
+
+      - alert: RevenueProcessingStalled
+        expr: increase(claims_revenue_dollars_total[10m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          service: claims_processing
+          category: business_impact
+        annotations:
+          summary: "Revenue processing stalled"
+          description: "No revenue has been processed in the last 10 minutes."
+
+      - alert: ValidationPassRateLow
+        expr: validation_pass_rate_percent < 90
+        for: 5m
+        labels:
+          severity: warning
+          service: claims_processing
+          category: quality
+        annotations:
+          summary: "Validation pass rate low"
+          description: "{{ $labels.rule_category }} validation pass rate is {{ $value }}%."
+
+  - name: application_health
+    rules:
+      # Application Health
+      - alert: ApplicationUnhealthy
+        expr: application_health_status != 1
+        for: 1m
+        labels:
+          severity: critical
+          service: application
+          category: health
+          page: true
+        annotations:
+          summary: "Application health check failed"
+          description: "Application health status is {{ $value }}."
+
+      - alert: ServiceUnavailable
+        expr: service_availability_percent < 99
+        for: 2m
+        labels:
+          severity: warning
+          service: application
+          category: availability
+        annotations:
+          summary: "Service availability degraded"
+          description: "{{ $labels.service_name }} availability is {{ $value }}%."
+
+      - alert: CacheHitRateLow
+        expr: cache_hit_ratio_percent < 70
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+          category: performance
+        annotations:
+          summary: "Cache hit rate low"
+          description: "{{ $labels.cache_type }} hit rate is {{ $value }}% (threshold: 70%)."
+
+      - alert: QueueDepthHigh
+        expr: queue_depth > 1000
+        for: 3m
+        labels:
+          severity: warning
+          service: application
+          category: performance
+        annotations:
+          summary: "Queue depth high"
+          description: "{{ $labels.queue_name }} depth is {{ $value }} items."
+
+      - alert: APILatencyHigh
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 3m
+        labels:
+          severity: warning
+          service: api
+          category: performance
+        annotations:
+          summary: "API latency high"
+          description: "95th percentile API latency is {{ $value }}s for {{ $labels.endpoint }}."
