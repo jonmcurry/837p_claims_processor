@@ -221,13 +221,9 @@ Set-Service MSSQLSERVER -StartupType Automatic
 Start-Service SQLSERVERAGENT  
 Set-Service SQLSERVERAGENT -StartupType Automatic
 
-# Create production analytics database
-sqlcmd -S localhost -E -Q "CREATE DATABASE ClaimsProcessingProduction"
-
+# The smart_pro_claims database will be created by the schema script
 # Create dedicated SQL login for analytics
 sqlcmd -S localhost -E -Q "CREATE LOGIN claims_analytics_user WITH PASSWORD = 'SecureAnalyticsPassword123!', CHECK_POLICY = OFF"
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "CREATE USER claims_analytics_user FOR LOGIN claims_analytics_user"
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "ALTER ROLE db_owner ADD MEMBER claims_analytics_user"
 
 # Create data directories for SQL Server files
 New-Item -ItemType Directory -Force -Path "C:\SQLData"
@@ -243,15 +239,19 @@ EXEC sp_configure 'optimize for ad hoc workloads', 1;
 RECONFIGURE WITH OVERRIDE;
 "@
 
-# Apply SQL Server schema for analytics database
+# Apply SQL Server schema (this will create the smart_pro_claims database)
 Set-Location "$appRoot\app"
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\sqlserver_schema.sql"
+sqlcmd -S localhost -E -i "database\sqlserver_schema.sql"
+
+# Grant permissions to analytics user
+sqlcmd -S localhost -E -d smart_pro_claims -Q "CREATE USER claims_analytics_user FOR LOGIN claims_analytics_user"
+sqlcmd -S localhost -E -d smart_pro_claims -Q "ALTER ROLE db_owner ADD MEMBER claims_analytics_user"
 
 # Create materialized views for analytics
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\materialized_views.sql"
+sqlcmd -S localhost -E -d smart_pro_claims -i "database\materialized_views.sql"
 
 # Verify SQL Server setup
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "SELECT COUNT(*) as TableCount FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'"
+sqlcmd -S localhost -E -d smart_pro_claims -Q "SELECT COUNT(*) as TableCount FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'"
 ```
 
 ### Step 7: Application Configuration
@@ -275,7 +275,7 @@ DATABASE_POOL_SIZE=50
 DATABASE_MAX_OVERFLOW=100
 
 # SQL Server (Analytics Database)
-ANALYTICS_DATABASE_URL=mssql+pyodbc://claims_analytics_user:SecureAnalyticsPassword123!@localhost/ClaimsProcessingProduction?driver=ODBC+Driver+17+for+SQL+Server
+ANALYTICS_DATABASE_URL=mssql+pyodbc://claims_analytics_user:SecureAnalyticsPassword123!@localhost/smart_pro_claims?driver=ODBC+Driver+17+for+SQL+Server
 ANALYTICS_DATABASE_POOL_SIZE=30
 ANALYTICS_DATABASE_MAX_OVERFLOW=60
 

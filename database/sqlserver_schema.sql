@@ -1,53 +1,60 @@
--- High-Performance SQL Server Production Schema for Claims Processing
--- Optimized for analytics, reporting, and high-volume data processing
--- Includes partitioning, columnstore indexes, and in-memory OLTP tables
+-- Smart Pro Claims Database Schema for SQL Server
+-- High-Performance analytics and reporting database
+-- Includes partitioning, columnstore indexes, and optimized for healthcare claims processing
 
-USE ClaimsProcessingProduction;
+-- Create the database
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'smart_pro_claims')
+BEGIN
+    CREATE DATABASE smart_pro_claims;
+END
+GO
+
+USE smart_pro_claims;
 GO
 
 -- Create filegroups for partitioning
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILEGROUP Claims_FG1;
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILEGROUP Claims_FG2;
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILEGROUP Claims_FG3;
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILEGROUP Claims_FG4;
 GO
 
 -- Add files to filegroups (adjust paths as needed)
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILE (
     NAME = 'Claims_FG1_Data',
-    FILENAME = 'C:\Data\Claims_FG1_Data.ndf',
+    FILENAME = 'C:\SQLData\Claims_FG1_Data.ndf',
     SIZE = 1GB,
     MAXSIZE = 50GB,
     FILEGROWTH = 256MB
 ) TO FILEGROUP Claims_FG1;
 
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILE (
     NAME = 'Claims_FG2_Data',
-    FILENAME = 'C:\Data\Claims_FG2_Data.ndf', 
+    FILENAME = 'C:\SQLData\Claims_FG2_Data.ndf', 
     SIZE = 1GB,
     MAXSIZE = 50GB,
     FILEGROWTH = 256MB
 ) TO FILEGROUP Claims_FG2;
 
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILE (
     NAME = 'Claims_FG3_Data',
-    FILENAME = 'C:\Data\Claims_FG3_Data.ndf',
+    FILENAME = 'C:\SQLData\Claims_FG3_Data.ndf',
     SIZE = 1GB, 
     MAXSIZE = 50GB,
     FILEGROWTH = 256MB
 ) TO FILEGROUP Claims_FG3;
 
-ALTER DATABASE ClaimsProcessingProduction 
+ALTER DATABASE smart_pro_claims 
 ADD FILE (
     NAME = 'Claims_FG4_Data',
-    FILENAME = 'C:\Data\Claims_FG4_Data.ndf',
+    FILENAME = 'C:\SQLData\Claims_FG4_Data.ndf',
     SIZE = 1GB,
     MAXSIZE = 50GB, 
     FILEGROWTH = 256MB
@@ -69,556 +76,553 @@ TO (Claims_FG1, Claims_FG2, Claims_FG3, Claims_FG4,
     Claims_FG1, Claims_FG2, Claims_FG3, Claims_FG4);
 GO
 
--- Facilities master table
-CREATE TABLE dbo.Facilities (
-    FacilityID INT IDENTITY(1,1) PRIMARY KEY,
-    FacilityCode NVARCHAR(20) NOT NULL UNIQUE,
-    FacilityName NVARCHAR(200) NOT NULL,
-    NPI NVARCHAR(10) NOT NULL,
-    TaxID NVARCHAR(20) NOT NULL,
-    AddressLine1 NVARCHAR(200) NOT NULL,
-    AddressLine2 NVARCHAR(200) NULL,
-    City NVARCHAR(100) NOT NULL,
-    State NCHAR(2) NOT NULL,
-    ZipCode NVARCHAR(10) NOT NULL,
-    Phone NVARCHAR(20) NULL,
-    IsActive BIT NOT NULL DEFAULT 1,
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    ModifiedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    INDEX IX_Facilities_FacilityCode NONCLUSTERED (FacilityCode),
-    INDEX IX_Facilities_NPI NONCLUSTERED (NPI),
-    INDEX IX_Facilities_IsActive NONCLUSTERED (IsActive)
+-- =============================================
+-- CORE REFERENCE TABLES
+-- =============================================
+
+-- Core Standard Payers
+CREATE TABLE dbo.core_standard_payers (
+    payer_id INT IDENTITY(1,1) PRIMARY KEY,
+    payer_name VARCHAR(200) NOT NULL,
+    payer_code CHAR(10) NOT NULL UNIQUE,
+    payer_type VARCHAR(50) NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE()
 );
 GO
 
--- Providers master table
-CREATE TABLE dbo.Providers (
-    ProviderID INT IDENTITY(1,1) PRIMARY KEY,
-    NPI NVARCHAR(10) NOT NULL UNIQUE,
-    ProviderName NVARCHAR(200) NOT NULL,
-    SpecialtyCode NVARCHAR(10) NULL,
-    IsActive BIT NOT NULL DEFAULT 1,
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    ModifiedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    INDEX IX_Providers_NPI NONCLUSTERED (NPI),
-    INDEX IX_Providers_SpecialtyCode NONCLUSTERED (SpecialtyCode),
-    INDEX IX_Providers_IsActive NONCLUSTERED (IsActive)
+-- RVU Data
+CREATE TABLE dbo.rvu_data (
+    procedure_code VARCHAR(10) NOT NULL PRIMARY KEY,
+    description VARCHAR(500) NULL,
+    category VARCHAR(50) NULL,
+    subcategory VARCHAR(50) NULL,
+    work_rvu DECIMAL(8, 4) NULL,
+    practice_expense_rvu DECIMAL(8, 4) NULL,
+    malpractice_rvu DECIMAL(8, 4) NULL,
+    total_rvu DECIMAL(8, 4) NULL,
+    conversion_factor DECIMAL(8, 2) NULL,
+    non_facility_pe_rvu DECIMAL(8, 4) NULL,
+    facility_pe_rvu DECIMAL(8, 4) NULL,
+    effective_date DATE NULL,
+    end_date DATE NULL,
+    status VARCHAR(20) NULL,
+    global_period VARCHAR(10) NULL,
+    professional_component BIT NULL,
+    technical_component BIT NULL,
+    bilateral_surgery BIT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE()
 );
 GO
 
--- Payers master table
-CREATE TABLE dbo.Payers (
-    PayerID INT IDENTITY(1,1) PRIMARY KEY,
-    PayerCode NVARCHAR(20) NOT NULL UNIQUE,
-    PayerName NVARCHAR(200) NOT NULL,
-    PayerType NVARCHAR(50) NOT NULL, -- Medicare, Medicaid, Commercial, etc.
-    ReimbursementRate DECIMAL(5,4) NULL,
-    IsActive BIT NOT NULL DEFAULT 1,
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    ModifiedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    INDEX IX_Payers_PayerCode NONCLUSTERED (PayerCode),
-    INDEX IX_Payers_PayerType NONCLUSTERED (PayerType),
-    INDEX IX_Payers_IsActive NONCLUSTERED (IsActive)
+-- =============================================
+-- ORGANIZATIONAL HIERARCHY
+-- =============================================
+
+-- Facility Organization (Top Level)
+CREATE TABLE dbo.facility_organization (
+    org_id INT IDENTITY(1,1) PRIMARY KEY,
+    org_name VARCHAR(100) NOT NULL,
+    installed_date DATETIME NOT NULL DEFAULT GETDATE(),
+    updated_by INT NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE()
 );
 GO
 
--- ICD-10 diagnosis codes lookup
-CREATE TABLE dbo.DiagnosisCodes (
-    DiagnosisCodeID INT IDENTITY(1,1) PRIMARY KEY,
-    ICD10Code NVARCHAR(10) NOT NULL UNIQUE,
-    Description NVARCHAR(500) NOT NULL,
-    Category NVARCHAR(100) NULL,
-    IsActive BIT NOT NULL DEFAULT 1,
-    EffectiveDate DATE NOT NULL,
-    ExpirationDate DATE NULL,
+-- Facility Region (Optional Middle Level)
+CREATE TABLE dbo.facility_region (
+    region_id INT IDENTITY(1,1) PRIMARY KEY,
+    region_name VARCHAR(100) NOT NULL,
+    org_id INT NOT NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
     
-    INDEX IX_DiagnosisCodes_ICD10Code NONCLUSTERED (ICD10Code),
-    INDEX IX_DiagnosisCodes_Category NONCLUSTERED (Category),
-    INDEX IX_DiagnosisCodes_IsActive NONCLUSTERED (IsActive)
+    CONSTRAINT FK_facility_region_org FOREIGN KEY (org_id) 
+        REFERENCES dbo.facility_organization(org_id)
 );
 GO
 
--- CPT procedure codes lookup
-CREATE TABLE dbo.ProcedureCodes (
-    ProcedureCodeID INT IDENTITY(1,1) PRIMARY KEY,
-    CPTCode NVARCHAR(10) NOT NULL UNIQUE,
-    Description NVARCHAR(500) NOT NULL,
-    Category NVARCHAR(100) NULL,
-    IsActive BIT NOT NULL DEFAULT 1,
-    EffectiveDate DATE NOT NULL,
-    ExpirationDate DATE NULL,
+-- Facilities (Bottom Level)
+CREATE TABLE dbo.facilities (
+    facility_id VARCHAR(20) PRIMARY KEY,
+    facility_name VARCHAR(100) NOT NULL,
+    installed_date DATETIME NOT NULL DEFAULT GETDATE(),
+    beds INT NULL,
+    city VARCHAR(24) NULL,
+    state CHAR(2) NULL,
+    updated_date DATETIME NOT NULL DEFAULT GETDATE(),
+    updated_by INT NULL,
+    region_id INT NULL,
+    fiscal_month INT NULL CHECK (fiscal_month BETWEEN 1 AND 12),
+    org_id INT NOT NULL,
+    active BIT NOT NULL DEFAULT 1,
     
-    INDEX IX_ProcedureCodes_CPTCode NONCLUSTERED (CPTCode),
-    INDEX IX_ProcedureCodes_Category NONCLUSTERED (Category),
-    INDEX IX_ProcedureCodes_IsActive NONCLUSTERED (IsActive)
+    CONSTRAINT FK_facilities_region FOREIGN KEY (region_id) 
+        REFERENCES dbo.facility_region(region_id),
+    CONSTRAINT FK_facilities_org FOREIGN KEY (org_id) 
+        REFERENCES dbo.facility_organization(org_id)
 );
 GO
 
--- RVU data table for reimbursement calculations
-CREATE TABLE dbo.RVUData (
-    RVUID INT IDENTITY(1,1) PRIMARY KEY,
-    CPTCode NVARCHAR(10) NOT NULL,
-    Modifier NVARCHAR(2) NULL,
-    Year INT NOT NULL,
-    WorkRVU DECIMAL(8,4) NOT NULL,
-    PracticeExpenseRVU DECIMAL(8,4) NOT NULL,
-    MalpracticeRVU DECIMAL(8,4) NOT NULL,
-    TotalRVU DECIMAL(8,4) NOT NULL,
-    ConversionFactor DECIMAL(8,4) NOT NULL DEFAULT 36.04,
-    IsActive BIT NOT NULL DEFAULT 1,
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+-- =============================================
+-- FACILITY CONFIGURATION TABLES
+-- =============================================
+
+-- Facility Financial Classes
+CREATE TABLE dbo.facility_financial_classes (
+    facility_id VARCHAR(20) NOT NULL,
+    financial_class_id VARCHAR(10) NOT NULL,
+    financial_class_name VARCHAR(100) NOT NULL,
+    payer_id INT NOT NULL,
+    reimbursement_rate DECIMAL(5,4) NULL,
+    processing_priority VARCHAR(10) NULL,
+    auto_posting_enabled BIT NOT NULL DEFAULT 0,
+    active BIT NOT NULL DEFAULT 1,
+    effective_date DATE NOT NULL,
+    end_date DATE NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    HCC CHAR(3) NULL,
     
-    INDEX IX_RVUData_CPTCode_Year NONCLUSTERED (CPTCode, Year),
-    INDEX IX_RVUData_IsActive NONCLUSTERED (IsActive)
+    PRIMARY KEY (facility_id, financial_class_id),
+    CONSTRAINT FK_facility_financial_classes_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id),
+    CONSTRAINT FK_facility_financial_classes_payer FOREIGN KEY (payer_id) 
+        REFERENCES dbo.core_standard_payers(payer_id)
 );
 GO
 
--- Main claims table (partitioned by service date)
-CREATE TABLE dbo.Claims (
-    ClaimID BIGINT IDENTITY(1,1) NOT NULL,
-    ClaimNumber NVARCHAR(50) NOT NULL,
-    FacilityID INT NOT NULL,
-    PatientAccountNumber NVARCHAR(50) NOT NULL,
-    MedicalRecordNumber NVARCHAR(50) NULL,
+-- Facility Place of Service
+CREATE TABLE dbo.facility_place_of_service (
+    facility_id VARCHAR(20) NOT NULL,
+    place_of_service VARCHAR(2) NOT NULL,
+    place_of_service_name VARCHAR(30) NOT NULL,
+    origin INT NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
     
-    -- Patient demographics (encrypted in production)
-    PatientFirstName NVARCHAR(100) NOT NULL,
-    PatientLastName NVARCHAR(100) NOT NULL,
-    PatientMiddleName NVARCHAR(100) NULL,
-    PatientDateOfBirth DATE NOT NULL,
-    PatientSSN VARBINARY(128) NULL, -- Encrypted
-    PatientGender NCHAR(1) NULL,
-    
-    -- Service information
-    AdmissionDate DATE NOT NULL,
-    DischargeDate DATE NOT NULL,
-    ServiceFromDate DATE NOT NULL,
-    ServiceToDate DATE NOT NULL,
-    
-    -- Financial information
-    FinancialClass NVARCHAR(50) NOT NULL,
-    TotalCharges DECIMAL(12,2) NOT NULL,
-    TotalRVU DECIMAL(8,4) NULL,
-    ExpectedReimbursement DECIMAL(12,2) NULL,
-    ActualReimbursement DECIMAL(12,2) NULL,
-    
-    -- Insurance information
-    PayerID INT NULL,
-    InsuranceType NVARCHAR(50) NOT NULL,
-    InsurancePlanID NVARCHAR(50) NULL,
-    SubscriberID NVARCHAR(50) NULL,
-    
-    -- Provider information
-    BillingProviderID INT NOT NULL,
-    BillingProviderName NVARCHAR(200) NOT NULL,
-    AttendingProviderID INT NULL,
-    AttendingProviderName NVARCHAR(200) NULL,
-    
-    -- Diagnosis information
-    PrimaryDiagnosisCodeID INT NOT NULL,
-    SecondaryDiagnosisCount INT DEFAULT 0,
-    
-    -- Processing metadata
-    ProcessingStatus NVARCHAR(20) NOT NULL DEFAULT 'Processed',
-    BatchID NVARCHAR(100) NULL,
-    ProcessedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    -- ML prediction results
-    MLPredictionScore DECIMAL(5,4) NULL,
-    MLPredictionResult NVARCHAR(50) NULL,
-    
-    -- Audit fields
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    CreatedBy NVARCHAR(100) NOT NULL,
-    ModifiedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    ModifiedBy NVARCHAR(100) NOT NULL,
-    
-    CONSTRAINT PK_Claims PRIMARY KEY CLUSTERED (ClaimID, ServiceFromDate),
-    CONSTRAINT FK_Claims_Facilities FOREIGN KEY (FacilityID) REFERENCES dbo.Facilities(FacilityID),
-    CONSTRAINT FK_Claims_Payers FOREIGN KEY (PayerID) REFERENCES dbo.Payers(PayerID),
-    CONSTRAINT FK_Claims_BillingProvider FOREIGN KEY (BillingProviderID) REFERENCES dbo.Providers(ProviderID),
-    CONSTRAINT FK_Claims_AttendingProvider FOREIGN KEY (AttendingProviderID) REFERENCES dbo.Providers(ProviderID),
-    CONSTRAINT FK_Claims_PrimaryDiagnosis FOREIGN KEY (PrimaryDiagnosisCodeID) REFERENCES dbo.DiagnosisCodes(DiagnosisCodeID)
-) ON ClaimsDatePartitionScheme(ServiceFromDate);
-GO
-
--- Claim line items table (partitioned)
-CREATE TABLE dbo.ClaimsLineItems (
-    LineItemID BIGINT IDENTITY(1,1) NOT NULL,
-    ClaimID BIGINT NOT NULL,
-    LineNumber INT NOT NULL,
-    ServiceFromDate DATE NOT NULL, -- Partition key
-    
-    -- Service information
-    ServiceDate DATE NOT NULL,
-    ProcedureCodeID INT NOT NULL,
-    ProcedureDescription NVARCHAR(500) NULL,
-    ModifierCodes NVARCHAR(20) NULL,
-    
-    -- Quantity and charges
-    Units INT NOT NULL,
-    ChargeAmount DECIMAL(10,2) NOT NULL,
-    
-    -- Provider information
-    RenderingProviderID INT NULL,
-    RenderingProviderName NVARCHAR(200) NULL,
-    
-    -- RVU and reimbursement information
-    WorkRVU DECIMAL(8,4) NULL,
-    PracticeExpenseRVU DECIMAL(8,4) NULL,
-    MalpracticeRVU DECIMAL(8,4) NULL,
-    TotalRVU DECIMAL(8,4) NULL,
-    ExpectedReimbursement DECIMAL(10,2) NULL,
-    ActualReimbursement DECIMAL(10,2) NULL,
-    
-    -- Diagnosis pointers
-    DiagnosisPointers NVARCHAR(50) NULL,
-    
-    -- Audit fields
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    CreatedBy NVARCHAR(100) NOT NULL,
-    ModifiedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    ModifiedBy NVARCHAR(100) NOT NULL,
-    
-    CONSTRAINT PK_ClaimsLineItems PRIMARY KEY CLUSTERED (LineItemID, ServiceFromDate),
-    CONSTRAINT FK_ClaimsLineItems_Claims FOREIGN KEY (ClaimID, ServiceFromDate) REFERENCES dbo.Claims(ClaimID, ServiceFromDate),
-    CONSTRAINT FK_ClaimsLineItems_ProcedureCode FOREIGN KEY (ProcedureCodeID) REFERENCES dbo.ProcedureCodes(ProcedureCodeID),
-    CONSTRAINT FK_ClaimsLineItems_RenderingProvider FOREIGN KEY (RenderingProviderID) REFERENCES dbo.Providers(ProviderID)
-) ON ClaimsDatePartitionScheme(ServiceFromDate);
-GO
-
--- Claim diagnosis codes junction table
-CREATE TABLE dbo.ClaimDiagnosisCodes (
-    ClaimDiagnosisID BIGINT IDENTITY(1,1) PRIMARY KEY,
-    ClaimID BIGINT NOT NULL,
-    ServiceFromDate DATE NOT NULL,
-    DiagnosisCodeID INT NOT NULL,
-    DiagnosisSequence INT NOT NULL,
-    IsPrimary BIT NOT NULL DEFAULT 0,
-    
-    CONSTRAINT FK_ClaimDiagnosisCodes_Claims FOREIGN KEY (ClaimID, ServiceFromDate) REFERENCES dbo.Claims(ClaimID, ServiceFromDate),
-    CONSTRAINT FK_ClaimDiagnosisCodes_DiagnosisCode FOREIGN KEY (DiagnosisCodeID) REFERENCES dbo.DiagnosisCodes(DiagnosisCodeID),
-    CONSTRAINT UQ_ClaimDiagnosisCodes_Sequence UNIQUE (ClaimID, DiagnosisSequence)
-) ON ClaimsDatePartitionScheme(ServiceFromDate);
-GO
-
--- Performance metrics table (in-memory OLTP for high-speed inserts)
-CREATE TABLE dbo.PerformanceMetrics (
-    MetricID BIGINT IDENTITY(1,1) PRIMARY KEY NONCLUSTERED,
-    
-    -- Metric information
-    MetricType NVARCHAR(50) NOT NULL,
-    MetricName NVARCHAR(100) NOT NULL,
-    MetricValue DECIMAL(20,6) NOT NULL,
-    Unit NVARCHAR(20) NOT NULL,
-    
-    -- Context
-    FacilityID INT NULL,
-    BatchID NVARCHAR(100) NULL,
-    ServiceName NVARCHAR(50) NOT NULL,
-    
-    -- Tags (JSON format)
-    Tags NVARCHAR(MAX) NULL,
-    
-    -- Timestamp
-    RecordedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    INDEX IX_PerformanceMetrics_MetricType_Date CLUSTERED (MetricType, RecordedDate),
-    INDEX IX_PerformanceMetrics_ServiceName NONCLUSTERED (ServiceName, RecordedDate),
-    INDEX IX_PerformanceMetrics_FacilityID NONCLUSTERED (FacilityID, RecordedDate)
-) WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_AND_DATA);
-GO
-
--- Analytics aggregation tables (columnstore for fast analytics)
-CREATE TABLE dbo.ClaimsAnalyticsSummary (
-    SummaryID BIGINT IDENTITY(1,1) NOT NULL,
-    
-    -- Dimensions
-    FacilityID INT NOT NULL,
-    PayerID INT NULL,
-    ServiceYear INT NOT NULL,
-    ServiceMonth INT NOT NULL,
-    ServiceDay INT NOT NULL,
-    
-    -- Measures
-    ClaimCount INT NOT NULL,
-    TotalCharges DECIMAL(14,2) NOT NULL,
-    TotalRVU DECIMAL(10,4) NOT NULL,
-    ExpectedReimbursement DECIMAL(14,2) NOT NULL,
-    ActualReimbursement DECIMAL(14,2) NULL,
-    
-    -- Processing metrics
-    AverageProcessingTime DECIMAL(8,2) NULL,
-    SuccessRate DECIMAL(5,2) NULL,
-    
-    -- Timestamp
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    CONSTRAINT PK_ClaimsAnalyticsSummary PRIMARY KEY NONCLUSTERED (SummaryID)
+    PRIMARY KEY (facility_id, place_of_service),
+    CONSTRAINT FK_facility_place_of_service_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id)
 );
-
--- Create clustered columnstore index for analytics
-CREATE CLUSTERED COLUMNSTORE INDEX CCI_ClaimsAnalyticsSummary 
-ON dbo.ClaimsAnalyticsSummary;
 GO
 
--- RVU analytics table (columnstore)
-CREATE TABLE dbo.RVUAnalytics (
-    RVUAnalyticsID BIGINT IDENTITY(1,1) NOT NULL,
+-- Facility Departments
+CREATE TABLE dbo.facility_departments (
+    department_code VARCHAR(10) NOT NULL,
+    department_name VARCHAR(50) NOT NULL,
+    facility_id VARCHAR(20) NOT NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
     
-    -- Dimensions
-    FacilityID INT NOT NULL,
-    ProviderID INT NOT NULL,
-    ProcedureCodeID INT NOT NULL,
-    ServiceYear INT NOT NULL,
-    ServiceMonth INT NOT NULL,
-    
-    -- Measures
-    ServiceCount INT NOT NULL,
-    TotalUnits INT NOT NULL,
-    TotalWorkRVU DECIMAL(12,4) NOT NULL,
-    TotalPracticeExpenseRVU DECIMAL(12,4) NOT NULL,
-    TotalMalpracticeRVU DECIMAL(12,4) NOT NULL,
-    TotalRVU DECIMAL(12,4) NOT NULL,
-    TotalReimbursement DECIMAL(14,2) NOT NULL,
-    
-    -- Performance metrics
-    AverageRVUPerService DECIMAL(8,4) NOT NULL,
-    AverageReimbursementPerRVU DECIMAL(8,2) NOT NULL,
-    
-    -- Timestamp
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    CONSTRAINT PK_RVUAnalytics PRIMARY KEY NONCLUSTERED (RVUAnalyticsID)
+    PRIMARY KEY (facility_id, department_code),
+    CONSTRAINT FK_facility_departments_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id)
 );
-
--- Create clustered columnstore index
-CREATE CLUSTERED COLUMNSTORE INDEX CCI_RVUAnalytics 
-ON dbo.RVUAnalytics;
 GO
 
--- Diagnosis code analytics table (columnstore)
-CREATE TABLE dbo.DiagnosisAnalytics (
-    DiagnosisAnalyticsID BIGINT IDENTITY(1,1) NOT NULL,
+-- Facility Coders
+CREATE TABLE dbo.facility_coders (
+    facility_id VARCHAR(20) NOT NULL,
+    coder_id VARCHAR(50) NOT NULL,
+    coder_first_name VARCHAR(50) NOT NULL,
+    coder_last_name VARCHAR(50) NOT NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
     
-    -- Dimensions
-    FacilityID INT NOT NULL,
-    DiagnosisCodeID INT NOT NULL,
-    ServiceYear INT NOT NULL,
-    ServiceMonth INT NOT NULL,
-    
-    -- Measures
-    ClaimCount INT NOT NULL,
-    LineItemCount INT NOT NULL,
-    TotalCharges DECIMAL(14,2) NOT NULL,
-    TotalRVU DECIMAL(12,4) NOT NULL,
-    TotalReimbursement DECIMAL(14,2) NOT NULL,
-    
-    -- Performance metrics
-    AverageChargePerClaim DECIMAL(10,2) NOT NULL,
-    AverageRVUPerClaim DECIMAL(8,4) NOT NULL,
-    AverageReimbursementPerClaim DECIMAL(10,2) NOT NULL,
-    
-    -- Timestamp
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    CONSTRAINT PK_DiagnosisAnalytics PRIMARY KEY NONCLUSTERED (DiagnosisAnalyticsID)
+    PRIMARY KEY (facility_id, coder_id),
+    CONSTRAINT FK_facility_coders_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id)
 );
-
--- Create clustered columnstore index
-CREATE CLUSTERED COLUMNSTORE INDEX CCI_DiagnosisAnalytics 
-ON dbo.DiagnosisAnalytics;
 GO
 
--- Payer analytics table (columnstore)
-CREATE TABLE dbo.PayerAnalytics (
-    PayerAnalyticsID BIGINT IDENTITY(1,1) NOT NULL,
-    
-    -- Dimensions
-    PayerID INT NOT NULL,
-    FacilityID INT NOT NULL,
-    ServiceYear INT NOT NULL,
-    ServiceMonth INT NOT NULL,
-    
-    -- Measures
-    ClaimCount INT NOT NULL,
-    TotalCharges DECIMAL(14,2) NOT NULL,
-    TotalRVU DECIMAL(12,4) NOT NULL,
-    ExpectedReimbursement DECIMAL(14,2) NOT NULL,
-    ActualReimbursement DECIMAL(14,2) NULL,
-    ReimbursementVariance DECIMAL(14,2) NULL,
-    
-    -- Performance metrics
-    PaymentAccuracy DECIMAL(5,2) NULL,
-    AveragePaymentDelay INT NULL,
-    DenialRate DECIMAL(5,2) NULL,
-    
-    -- Timestamp
-    CreatedDate DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    
-    CONSTRAINT PK_PayerAnalytics PRIMARY KEY NONCLUSTERED (PayerAnalyticsID)
+-- Physicians
+CREATE TABLE dbo.physicians (
+    rendering_provider_id VARCHAR(50) PRIMARY KEY,
+    last_name VARCHAR(50) NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    npi VARCHAR(10) NULL,
+    specialty_code VARCHAR(10) NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE()
 );
-
--- Create clustered columnstore index
-CREATE CLUSTERED COLUMNSTORE INDEX CCI_PayerAnalytics 
-ON dbo.PayerAnalytics;
 GO
 
--- Create non-clustered indexes for optimal query performance
--- Claims table indexes
-CREATE NONCLUSTERED INDEX IX_Claims_FacilityID_ServiceDate 
-ON dbo.Claims (FacilityID, ServiceFromDate, ServiceToDate);
+-- =============================================
+-- CLAIMS PROCESSING TABLES
+-- =============================================
 
-CREATE NONCLUSTERED INDEX IX_Claims_PayerID_ServiceDate 
-ON dbo.Claims (PayerID, ServiceFromDate) 
-WHERE PayerID IS NOT NULL;
-
-CREATE NONCLUSTERED INDEX IX_Claims_ProcessedDate 
-ON dbo.Claims (ProcessedDate);
-
-CREATE NONCLUSTERED INDEX IX_Claims_ClaimNumber 
-ON dbo.Claims (ClaimNumber);
-
-CREATE NONCLUSTERED INDEX IX_Claims_PatientAccount 
-ON dbo.Claims (PatientAccountNumber, FacilityID);
-
--- Line items indexes
-CREATE NONCLUSTERED INDEX IX_ClaimsLineItems_ClaimID 
-ON dbo.ClaimsLineItems (ClaimID, ServiceFromDate);
-
-CREATE NONCLUSTERED INDEX IX_ClaimsLineItems_ProcedureCode_ServiceDate 
-ON dbo.ClaimsLineItems (ProcedureCodeID, ServiceDate);
-
-CREATE NONCLUSTERED INDEX IX_ClaimsLineItems_RenderingProvider 
-ON dbo.ClaimsLineItems (RenderingProviderID, ServiceDate) 
-WHERE RenderingProviderID IS NOT NULL;
-
--- Performance optimization views
-CREATE VIEW dbo.vw_ClaimsWithMetrics
-AS
-SELECT 
-    c.ClaimID,
-    c.ClaimNumber,
-    f.FacilityName,
-    p.PayerName,
-    c.ServiceFromDate,
-    c.ServiceToDate,
-    c.TotalCharges,
-    c.TotalRVU,
-    c.ExpectedReimbursement,
-    c.ActualReimbursement,
-    c.ProcessedDate,
-    -- Performance metrics
-    DATEDIFF(DAY, c.ServiceFromDate, c.ProcessedDate) AS ProcessingDaysFromService,
-    CASE 
-        WHEN c.ActualReimbursement IS NOT NULL 
-        THEN ((c.ActualReimbursement - c.ExpectedReimbursement) / c.ExpectedReimbursement) * 100 
-        ELSE NULL 
-    END AS ReimbursementVariancePercent,
-    -- Line item count
-    (SELECT COUNT(*) FROM dbo.ClaimsLineItems cli WHERE cli.ClaimID = c.ClaimID AND cli.ServiceFromDate = c.ServiceFromDate) AS LineItemCount
-FROM dbo.Claims c
-INNER JOIN dbo.Facilities f ON c.FacilityID = f.FacilityID
-LEFT JOIN dbo.Payers p ON c.PayerID = p.PayerID;
+-- Claims (Main claims table)
+CREATE TABLE dbo.claims (
+    facility_id VARCHAR(20) NOT NULL,
+    patient_account_number VARCHAR(50) NOT NULL,
+    medical_record_number VARCHAR(50) NULL,
+    patient_name VARCHAR(100) NULL,
+    first_name VARCHAR(50) NULL,
+    last_name VARCHAR(50) NULL,
+    date_of_birth DATE NULL,
+    gender VARCHAR(1) NULL CHECK (gender IN ('M', 'F', 'U')),
+    financial_class_id VARCHAR(10) NULL,
+    secondary_insurance VARCHAR(10) NULL,
+    active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    
+    PRIMARY KEY (facility_id, patient_account_number),
+    CONSTRAINT FK_claims_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id),
+    CONSTRAINT FK_claims_financial_class FOREIGN KEY (facility_id, financial_class_id) 
+        REFERENCES dbo.facility_financial_classes(facility_id, financial_class_id),
+    CONSTRAINT FK_claims_secondary_insurance FOREIGN KEY (facility_id, secondary_insurance) 
+        REFERENCES dbo.facility_financial_classes(facility_id, financial_class_id)
+) ON ClaimsDatePartitionScheme(created_at);
 GO
 
--- Create indexed views for common analytics queries
-CREATE VIEW dbo.vw_MonthlyClaimsSummary
-WITH SCHEMABINDING
-AS
-SELECT 
-    c.FacilityID,
-    c.PayerID,
-    YEAR(c.ServiceFromDate) AS ServiceYear,
-    MONTH(c.ServiceFromDate) AS ServiceMonth,
-    COUNT_BIG(*) AS ClaimCount,
-    SUM(c.TotalCharges) AS TotalCharges,
-    SUM(c.TotalRVU) AS TotalRVU,
-    SUM(c.ExpectedReimbursement) AS ExpectedReimbursement,
-    SUM(c.ActualReimbursement) AS ActualReimbursement
-FROM dbo.Claims c
-GROUP BY c.FacilityID, c.PayerID, YEAR(c.ServiceFromDate), MONTH(c.ServiceFromDate);
+-- Claims Diagnosis
+CREATE TABLE dbo.claims_diagnosis (
+    facility_id VARCHAR(20) NOT NULL,
+    patient_account_number VARCHAR(50) NOT NULL,
+    diagnosis_sequence INT NOT NULL,
+    diagnosis_code VARCHAR(20) NOT NULL,
+    diagnosis_description VARCHAR(255) NULL,
+    diagnosis_type VARCHAR(10) NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    
+    PRIMARY KEY (facility_id, patient_account_number, diagnosis_sequence),
+    CONSTRAINT FK_claims_diagnosis_claims FOREIGN KEY (facility_id, patient_account_number) 
+        REFERENCES dbo.claims(facility_id, patient_account_number)
+) ON ClaimsDatePartitionScheme(created_at);
 GO
 
-CREATE UNIQUE CLUSTERED INDEX IX_vw_MonthlyClaimsSummary 
-ON dbo.vw_MonthlyClaimsSummary (FacilityID, PayerID, ServiceYear, ServiceMonth);
+-- Claims Line Items
+CREATE TABLE dbo.claims_line_items (
+    facility_id VARCHAR(20) NOT NULL,
+    patient_account_number VARCHAR(50) NOT NULL,
+    line_number INT NOT NULL,
+    procedure_code VARCHAR(10) NOT NULL,
+    modifier1 VARCHAR(2) NULL,
+    modifier2 VARCHAR(2) NULL,
+    modifier3 VARCHAR(2) NULL,
+    modifier4 VARCHAR(2) NULL,
+    units INT NOT NULL DEFAULT 1,
+    charge_amount NUMERIC(10,2) NOT NULL,
+    service_from_date DATE NULL,
+    service_to_date DATE NULL,
+    diagnosis_pointer VARCHAR(4) NULL,
+    place_of_service VARCHAR(2) NULL,
+    revenue_code VARCHAR(4) NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    rvu_value NUMERIC(8,4) NULL,
+    reimbursement_amount NUMERIC(10,2) NULL,
+    rendering_provider_id VARCHAR(50) NULL,
+    
+    PRIMARY KEY (facility_id, patient_account_number, line_number),
+    CONSTRAINT FK_claims_line_items_claims FOREIGN KEY (facility_id, patient_account_number) 
+        REFERENCES dbo.claims(facility_id, patient_account_number),
+    CONSTRAINT FK_claims_line_items_place_of_service FOREIGN KEY (facility_id, place_of_service) 
+        REFERENCES dbo.facility_place_of_service(facility_id, place_of_service),
+    CONSTRAINT FK_claims_line_items_provider FOREIGN KEY (rendering_provider_id) 
+        REFERENCES dbo.physicians(rendering_provider_id),
+    CONSTRAINT FK_claims_line_items_rvu FOREIGN KEY (procedure_code) 
+        REFERENCES dbo.rvu_data(procedure_code)
+) ON ClaimsDatePartitionScheme(created_at);
 GO
 
--- Stored procedures for data processing
-CREATE PROCEDURE dbo.usp_RefreshAnalyticsSummaries
-    @StartDate DATE = NULL,
-    @EndDate DATE = NULL
+-- =============================================
+-- FAILED CLAIMS MANAGEMENT
+-- =============================================
+
+-- Failed Claims Patterns
+CREATE TABLE dbo.failed_claims_patterns (
+    pattern_id VARCHAR(50) PRIMARY KEY,
+    pattern_name VARCHAR(200) NOT NULL,
+    pattern_description NVARCHAR(1000) NULL,
+    failure_category VARCHAR(50) NULL,
+    severity_level VARCHAR(20) NULL,
+    frequency_score INT NULL,
+    pattern_rules NVARCHAR(MAX) NULL,
+    auto_repair_possible BIT NULL DEFAULT 0,
+    repair_template NVARCHAR(MAX) NULL,
+    occurrence_count INT NULL DEFAULT 0,
+    resolution_rate DECIMAL(5, 4) NULL,
+    average_resolution_time_hours DECIMAL(8, 2) NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE()
+);
+GO
+
+-- Failed Claims
+CREATE TABLE dbo.failed_claims (
+    claim_id VARCHAR(50) PRIMARY KEY,
+    batch_id VARCHAR(50) NULL,
+    facility_id VARCHAR(20) NULL,
+    patient_account_number VARCHAR(50) NULL,
+    original_data NVARCHAR(MAX) NULL,
+    failure_reason NVARCHAR(1000) NOT NULL,
+    failure_category VARCHAR(50) NOT NULL,
+    processing_stage VARCHAR(50) NOT NULL,
+    failed_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    repair_suggestions NVARCHAR(MAX) NULL,
+    resolution_status VARCHAR(20) NULL DEFAULT 'PENDING',
+    assigned_to VARCHAR(100) NULL,
+    resolved_at DATETIME2(7) NULL,
+    resolution_notes NVARCHAR(2000) NULL,
+    resolution_action VARCHAR(50) NULL,
+    error_pattern_id VARCHAR(50) NULL,
+    priority_level VARCHAR(10) NULL DEFAULT 'MEDIUM',
+    impact_level VARCHAR(10) NULL DEFAULT 'MEDIUM',
+    potential_revenue_loss DECIMAL(12, 2) NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    coder_id VARCHAR(50) NULL,
+    
+    CONSTRAINT FK_failed_claims_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id),
+    CONSTRAINT FK_failed_claims_pattern FOREIGN KEY (error_pattern_id) 
+        REFERENCES dbo.failed_claims_patterns(pattern_id),
+    CONSTRAINT FK_failed_claims_coder FOREIGN KEY (facility_id, coder_id) 
+        REFERENCES dbo.facility_coders(facility_id, coder_id)
+) ON ClaimsDatePartitionScheme(failed_at);
+GO
+
+-- =============================================
+-- AUDIT AND LOGGING TABLES
+-- =============================================
+
+-- Audit Log
+CREATE TABLE dbo.audit_log (
+    audit_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    table_name VARCHAR(100) NOT NULL,
+    record_id VARCHAR(50) NOT NULL,
+    operation VARCHAR(20) NOT NULL,
+    user_id VARCHAR(100) NULL,
+    session_id VARCHAR(100) NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(500) NULL,
+    old_values NVARCHAR(MAX) NULL,
+    new_values NVARCHAR(MAX) NULL,
+    changed_columns NVARCHAR(500) NULL,
+    operation_timestamp DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    reason VARCHAR(500) NULL,
+    approval_required BIT NULL DEFAULT 0,
+    approved_by VARCHAR(100) NULL,
+    approved_at DATETIME2(7) NULL
+) ON ClaimsDatePartitionScheme(operation_timestamp);
+GO
+
+-- Data Access Log
+CREATE TABLE dbo.data_access_log (
+    access_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    access_timestamp DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    user_id VARCHAR(100) NOT NULL,
+    user_role VARCHAR(50) NULL,
+    department VARCHAR(100) NULL,
+    table_name VARCHAR(100) NOT NULL,
+    record_id VARCHAR(50) NULL,
+    access_type VARCHAR(20) NULL,
+    data_classification VARCHAR(20) NULL,
+    business_justification VARCHAR(500) NULL,
+    patient_account_number VARCHAR(50) NULL,
+    facility_id VARCHAR(20) NULL,
+    ip_address VARCHAR(45) NULL,
+    application_name VARCHAR(100) NULL,
+    query_executed NVARCHAR(MAX) NULL
+) ON ClaimsDatePartitionScheme(access_timestamp);
+GO
+
+-- =============================================
+-- PERFORMANCE AND REPORTING TABLES
+-- =============================================
+
+-- Daily Processing Summary
+CREATE TABLE dbo.daily_processing_summary (
+    summary_date DATE NOT NULL,
+    facility_id VARCHAR(20) NULL,
+    total_claims_processed INT NULL,
+    total_claims_failed INT NULL,
+    total_line_items INT NULL,
+    total_charge_amount DECIMAL(15, 2) NULL,
+    total_reimbursement_amount DECIMAL(15, 2) NULL,
+    average_reimbursement_rate DECIMAL(5, 4) NULL,
+    average_processing_time_seconds DECIMAL(8, 2) NULL,
+    throughput_claims_per_hour DECIMAL(10, 2) NULL,
+    error_rate_percentage DECIMAL(5, 2) NULL,
+    ml_accuracy_percentage DECIMAL(5, 2) NULL,
+    validation_pass_rate DECIMAL(5, 2) NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    
+    PRIMARY KEY (summary_date, facility_id),
+    CONSTRAINT FK_daily_processing_summary_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id)
+);
+GO
+
+-- Performance Metrics
+CREATE TABLE dbo.performance_metrics (
+    metric_id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    metric_date DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
+    metric_type VARCHAR(50) NOT NULL,
+    facility_id VARCHAR(20) NULL,
+    claims_per_second DECIMAL(10, 4) NULL,
+    records_per_minute DECIMAL(10, 2) NULL,
+    cpu_usage_percent DECIMAL(5, 2) NULL,
+    memory_usage_mb INT NULL,
+    database_response_time_ms DECIMAL(8, 2) NULL,
+    queue_depth INT NULL,
+    error_rate DECIMAL(5, 4) NULL,
+    processing_accuracy DECIMAL(5, 4) NULL,
+    revenue_per_claim DECIMAL(10, 2) NULL,
+    additional_metrics NVARCHAR(MAX) NULL,
+    
+    CONSTRAINT FK_performance_metrics_facility FOREIGN KEY (facility_id) 
+        REFERENCES dbo.facilities(facility_id)
+) ON ClaimsDatePartitionScheme(metric_date);
+GO
+
+-- =============================================
+-- INDEXES FOR PERFORMANCE OPTIMIZATION
+-- =============================================
+
+-- Core Standard Payers Indexes
+CREATE NONCLUSTERED INDEX IX_core_standard_payers_code 
+ON dbo.core_standard_payers(payer_code);
+CREATE NONCLUSTERED INDEX IX_core_standard_payers_name 
+ON dbo.core_standard_payers(payer_name);
+
+-- RVU Data Indexes
+CREATE NONCLUSTERED INDEX IX_rvu_data_category 
+ON dbo.rvu_data(category, subcategory);
+CREATE NONCLUSTERED INDEX IX_rvu_data_effective_date 
+ON dbo.rvu_data(effective_date, end_date);
+
+-- Facilities Indexes
+CREATE NONCLUSTERED INDEX IX_facilities_org_region 
+ON dbo.facilities(org_id, region_id);
+CREATE NONCLUSTERED INDEX IX_facilities_state_city 
+ON dbo.facilities(state, city);
+
+-- Financial Classes Indexes
+CREATE NONCLUSTERED INDEX IX_facility_financial_classes_payer 
+ON dbo.facility_financial_classes(payer_id);
+CREATE NONCLUSTERED INDEX IX_facility_financial_classes_effective 
+ON dbo.facility_financial_classes(effective_date, end_date);
+
+-- Claims Indexes
+CREATE NONCLUSTERED INDEX IX_claims_patient_name 
+ON dbo.claims(last_name, first_name);
+CREATE NONCLUSTERED INDEX IX_claims_dob 
+ON dbo.claims(date_of_birth);
+CREATE NONCLUSTERED INDEX IX_claims_financial_class 
+ON dbo.claims(facility_id, financial_class_id);
+
+-- Claims Diagnosis Indexes
+CREATE NONCLUSTERED INDEX IX_claims_diagnosis_code 
+ON dbo.claims_diagnosis(diagnosis_code);
+
+-- Claims Line Items Indexes
+CREATE NONCLUSTERED INDEX IX_claims_line_items_procedure 
+ON dbo.claims_line_items(procedure_code);
+CREATE NONCLUSTERED INDEX IX_claims_line_items_service_date 
+ON dbo.claims_line_items(service_from_date, service_to_date);
+CREATE NONCLUSTERED INDEX IX_claims_line_items_provider 
+ON dbo.claims_line_items(rendering_provider_id);
+
+-- Failed Claims Indexes
+CREATE NONCLUSTERED INDEX IX_failed_claims_facility_status 
+ON dbo.failed_claims(facility_id, resolution_status);
+CREATE NONCLUSTERED INDEX IX_failed_claims_category 
+ON dbo.failed_claims(failure_category, processing_stage);
+CREATE NONCLUSTERED INDEX IX_failed_claims_failed_at 
+ON dbo.failed_claims(failed_at);
+
+-- Audit Log Indexes
+CREATE NONCLUSTERED INDEX IX_audit_log_table_operation 
+ON dbo.audit_log(table_name, operation);
+CREATE NONCLUSTERED INDEX IX_audit_log_user_timestamp 
+ON dbo.audit_log(user_id, operation_timestamp);
+
+-- Data Access Log Indexes
+CREATE NONCLUSTERED INDEX IX_data_access_log_user_timestamp 
+ON dbo.data_access_log(user_id, access_timestamp);
+CREATE NONCLUSTERED INDEX IX_data_access_log_table 
+ON dbo.data_access_log(table_name, access_type);
+
+-- Performance Metrics Indexes
+CREATE NONCLUSTERED INDEX IX_performance_metrics_facility_date 
+ON dbo.performance_metrics(facility_id, metric_date);
+CREATE NONCLUSTERED INDEX IX_performance_metrics_type 
+ON dbo.performance_metrics(metric_type, metric_date);
+
+-- Daily Processing Summary Indexes
+CREATE NONCLUSTERED INDEX IX_daily_processing_summary_facility 
+ON dbo.daily_processing_summary(facility_id, summary_date);
+
+-- =============================================
+-- COLUMNSTORE INDEXES FOR ANALYTICS
+-- =============================================
+
+-- Claims analytics columnstore index
+CREATE NONCLUSTERED COLUMNSTORE INDEX NCCI_claims_analytics 
+ON dbo.claims (facility_id, patient_account_number, financial_class_id, 
+               date_of_birth, gender, created_at, updated_at);
+
+-- Claims line items analytics columnstore index
+CREATE NONCLUSTERED COLUMNSTORE INDEX NCCI_claims_line_items_analytics 
+ON dbo.claims_line_items (facility_id, patient_account_number, procedure_code, 
+                         charge_amount, reimbursement_amount, service_from_date, 
+                         place_of_service, rendering_provider_id, rvu_value);
+
+-- Failed claims analytics columnstore index
+CREATE NONCLUSTERED COLUMNSTORE INDEX NCCI_failed_claims_analytics 
+ON dbo.failed_claims (facility_id, failure_category, processing_stage, 
+                     failed_at, resolution_status, potential_revenue_loss);
+
+-- Performance metrics analytics columnstore index
+CREATE NONCLUSTERED COLUMNSTORE INDEX NCCI_performance_metrics_analytics 
+ON dbo.performance_metrics (facility_id, metric_type, metric_date, 
+                           claims_per_second, error_rate, processing_accuracy);
+
+-- =============================================
+-- STORED PROCEDURES AND FUNCTIONS
+-- =============================================
+
+-- Procedure to refresh all statistics
+CREATE PROCEDURE dbo.RefreshAllStatistics
 AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- Default to current month if no dates provided
-    IF @StartDate IS NULL OR @EndDate IS NULL
-    BEGIN
-        SET @StartDate = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-        SET @EndDate = EOMONTH(@StartDate);
-    END
+    UPDATE STATISTICS dbo.claims WITH FULLSCAN;
+    UPDATE STATISTICS dbo.claims_line_items WITH FULLSCAN;
+    UPDATE STATISTICS dbo.failed_claims WITH FULLSCAN;
+    UPDATE STATISTICS dbo.performance_metrics WITH FULLSCAN;
+    UPDATE STATISTICS dbo.daily_processing_summary WITH FULLSCAN;
+    UPDATE STATISTICS dbo.audit_log WITH FULLSCAN;
+    UPDATE STATISTICS dbo.data_access_log WITH FULLSCAN;
+END;
+GO
+
+-- Function to calculate reimbursement rate
+CREATE FUNCTION dbo.CalculateReimbursementRate(
+    @ChargeAmount DECIMAL(10,2),
+    @ReimbursementAmount DECIMAL(10,2)
+)
+RETURNS DECIMAL(5,4)
+AS
+BEGIN
+    DECLARE @Rate DECIMAL(5,4);
     
-    -- Refresh claims analytics summary
-    MERGE dbo.ClaimsAnalyticsSummary AS target
-    USING (
-        SELECT 
-            c.FacilityID,
-            c.PayerID,
-            YEAR(c.ServiceFromDate) AS ServiceYear,
-            MONTH(c.ServiceFromDate) AS ServiceMonth,
-            DAY(c.ServiceFromDate) AS ServiceDay,
-            COUNT(*) AS ClaimCount,
-            SUM(c.TotalCharges) AS TotalCharges,
-            SUM(c.TotalRVU) AS TotalRVU,
-            SUM(c.ExpectedReimbursement) AS ExpectedReimbursement,
-            SUM(c.ActualReimbursement) AS ActualReimbursement
-        FROM dbo.Claims c
-        WHERE c.ServiceFromDate BETWEEN @StartDate AND @EndDate
-        GROUP BY c.FacilityID, c.PayerID, YEAR(c.ServiceFromDate), MONTH(c.ServiceFromDate), DAY(c.ServiceFromDate)
-    ) AS source ON (
-        target.FacilityID = source.FacilityID 
-        AND ISNULL(target.PayerID, 0) = ISNULL(source.PayerID, 0)
-        AND target.ServiceYear = source.ServiceYear
-        AND target.ServiceMonth = source.ServiceMonth
-        AND target.ServiceDay = source.ServiceDay
-    )
-    WHEN MATCHED THEN
-        UPDATE SET 
-            ClaimCount = source.ClaimCount,
-            TotalCharges = source.TotalCharges,
-            TotalRVU = source.TotalRVU,
-            ExpectedReimbursement = source.ExpectedReimbursement,
-            ActualReimbursement = source.ActualReimbursement
-    WHEN NOT MATCHED THEN
-        INSERT (FacilityID, PayerID, ServiceYear, ServiceMonth, ServiceDay, 
-                ClaimCount, TotalCharges, TotalRVU, ExpectedReimbursement, ActualReimbursement)
-        VALUES (source.FacilityID, source.PayerID, source.ServiceYear, source.ServiceMonth, source.ServiceDay,
-                source.ClaimCount, source.TotalCharges, source.TotalRVU, source.ExpectedReimbursement, source.ActualReimbursement);
-END
+    IF @ChargeAmount = 0 OR @ChargeAmount IS NULL
+        SET @Rate = 0;
+    ELSE
+        SET @Rate = @ReimbursementAmount / @ChargeAmount;
+    
+    RETURN @Rate;
+END;
 GO
 
--- Database optimization settings
-ALTER DATABASE ClaimsProcessingProduction SET COMPATIBILITY_LEVEL = 150;
-ALTER DATABASE ClaimsProcessingProduction SET AUTO_CREATE_STATISTICS ON;
-ALTER DATABASE ClaimsProcessingProduction SET AUTO_UPDATE_STATISTICS ON;
-ALTER DATABASE ClaimsProcessingProduction SET AUTO_UPDATE_STATISTICS_ASYNC ON;
-ALTER DATABASE ClaimsProcessingProduction SET PARAMETERIZATION FORCED;
-ALTER DATABASE ClaimsProcessingProduction SET QUERY_STORE = ON;
+PRINT 'Smart Pro Claims database schema created successfully.';
 GO
-
--- Enable In-Memory OLTP
-ALTER DATABASE ClaimsProcessingProduction 
-ADD FILEGROUP ClaimsProcessingProduction_mod CONTAINS MEMORY_OPTIMIZED_DATA;
-
-ALTER DATABASE ClaimsProcessingProduction 
-ADD FILE (
-    NAME = 'ClaimsProcessingProduction_mod',
-    FILENAME = 'C:\Data\ClaimsProcessingProduction_mod.ndf'
-) TO FILEGROUP ClaimsProcessingProduction_mod;
-GO
-
-PRINT 'SQL Server production schema created successfully with partitioning, columnstore indexes, and analytics optimization.';

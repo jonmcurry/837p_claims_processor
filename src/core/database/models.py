@@ -405,3 +405,368 @@ class PerformanceMetrics(Base):
         Index("idx_performance_metrics_type_time", "metric_type", "recorded_at"),
         Index("idx_performance_metrics_service", "service_name", "recorded_at"),
     )
+
+
+# ========================================
+# SQL SERVER ANALYTICS MODELS 
+# ========================================
+
+class FacilityOrganization(Base):
+    """Facility organization model for SQL Server analytics."""
+    
+    __tablename__ = "facility_organization"
+    __bind_key__ = "sqlserver"
+    
+    org_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    org_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    installed_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_by: Mapped[Optional[int]] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    
+    # Relationships
+    regions: Mapped[List["FacilityRegion"]] = relationship(
+        "FacilityRegion", back_populates="organization"
+    )
+    facilities: Mapped[List["Facility"]] = relationship(
+        "Facility", back_populates="organization"
+    )
+
+
+class FacilityRegion(Base):
+    """Facility region model for SQL Server analytics."""
+    
+    __tablename__ = "facility_region"
+    __bind_key__ = "sqlserver"
+    
+    region_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    region_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    org_id: Mapped[int] = mapped_column(Integer, ForeignKey("facility_organization.org_id"), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    
+    # Relationships
+    organization: Mapped["FacilityOrganization"] = relationship(
+        "FacilityOrganization", back_populates="regions"
+    )
+    facilities: Mapped[List["Facility"]] = relationship(
+        "Facility", back_populates="region"
+    )
+
+
+class Facility(Base):
+    """Facility model for SQL Server analytics."""
+    
+    __tablename__ = "facilities"
+    __bind_key__ = "sqlserver"
+    
+    facility_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    facility_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    installed_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    beds: Mapped[Optional[int]] = mapped_column(Integer)
+    city: Mapped[Optional[str]] = mapped_column(String(24))
+    state: Mapped[Optional[str]] = mapped_column(String(2))
+    updated_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_by: Mapped[Optional[int]] = mapped_column(Integer)
+    region_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("facility_region.region_id"))
+    fiscal_month: Mapped[Optional[int]] = mapped_column(Integer)
+    org_id: Mapped[int] = mapped_column(Integer, ForeignKey("facility_organization.org_id"), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    
+    # Relationships
+    organization: Mapped["FacilityOrganization"] = relationship(
+        "FacilityOrganization", back_populates="facilities"
+    )
+    region: Mapped[Optional["FacilityRegion"]] = relationship(
+        "FacilityRegion", back_populates="facilities"
+    )
+    financial_classes: Mapped[List["FacilityFinancialClass"]] = relationship(
+        "FacilityFinancialClass", back_populates="facility"
+    )
+    claims_analytics: Mapped[List["ClaimAnalytics"]] = relationship(
+        "ClaimAnalytics", back_populates="facility"
+    )
+
+
+class CoreStandardPayer(Base):
+    """Core standard payers model for SQL Server analytics."""
+    
+    __tablename__ = "core_standard_payers"
+    __bind_key__ = "sqlserver"
+    
+    payer_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    payer_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    payer_code: Mapped[str] = mapped_column(String(10), nullable=False, unique=True)
+    payer_type: Mapped[Optional[str]] = mapped_column(String(50))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+
+
+class FacilityFinancialClass(Base):
+    """Facility financial classes model for SQL Server analytics."""
+    
+    __tablename__ = "facility_financial_classes"
+    __bind_key__ = "sqlserver"
+    
+    facility_id: Mapped[str] = mapped_column(String(20), ForeignKey("facilities.facility_id"), primary_key=True)
+    financial_class_id: Mapped[str] = mapped_column(String(10), primary_key=True)
+    financial_class_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    payer_id: Mapped[int] = mapped_column(Integer, ForeignKey("core_standard_payers.payer_id"), nullable=False)
+    reimbursement_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))
+    processing_priority: Mapped[Optional[str]] = mapped_column(String(10))
+    auto_posting_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    effective_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    end_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    hcc: Mapped[Optional[str]] = mapped_column(String(3))
+    
+    # Relationships
+    facility: Mapped["Facility"] = relationship(
+        "Facility", back_populates="financial_classes"
+    )
+
+
+class RVUData(Base):
+    """RVU data model for SQL Server analytics."""
+    
+    __tablename__ = "rvu_data"
+    __bind_key__ = "sqlserver"
+    
+    procedure_code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    description: Mapped[Optional[str]] = mapped_column(String(500))
+    category: Mapped[Optional[str]] = mapped_column(String(50))
+    subcategory: Mapped[Optional[str]] = mapped_column(String(50))
+    work_rvu: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    practice_expense_rvu: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    malpractice_rvu: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    total_rvu: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    conversion_factor: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+    non_facility_pe_rvu: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    facility_pe_rvu: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    effective_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    end_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    status: Mapped[Optional[str]] = mapped_column(String(20))
+    global_period: Mapped[Optional[str]] = mapped_column(String(10))
+    professional_component: Mapped[Optional[bool]] = mapped_column(Boolean)
+    technical_component: Mapped[Optional[bool]] = mapped_column(Boolean)
+    bilateral_surgery: Mapped[Optional[bool]] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+
+
+class ClaimAnalytics(Base):
+    """Claims analytics model for SQL Server (partitioned)."""
+    
+    __tablename__ = "claims"
+    __bind_key__ = "sqlserver"
+    
+    facility_id: Mapped[str] = mapped_column(String(20), ForeignKey("facilities.facility_id"), primary_key=True)
+    patient_account_number: Mapped[str] = mapped_column(String(50), primary_key=True)
+    medical_record_number: Mapped[Optional[str]] = mapped_column(String(50))
+    patient_name: Mapped[Optional[str]] = mapped_column(String(100))
+    first_name: Mapped[Optional[str]] = mapped_column(String(50))
+    last_name: Mapped[Optional[str]] = mapped_column(String(50))
+    date_of_birth: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    gender: Mapped[Optional[str]] = mapped_column(String(1))
+    financial_class_id: Mapped[Optional[str]] = mapped_column(String(10))
+    secondary_insurance: Mapped[Optional[str]] = mapped_column(String(10))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    
+    # Relationships
+    facility: Mapped["Facility"] = relationship(
+        "Facility", back_populates="claims_analytics"
+    )
+    line_items: Mapped[List["ClaimLineItemAnalytics"]] = relationship(
+        "ClaimLineItemAnalytics", back_populates="claim"
+    )
+    diagnosis: Mapped[List["ClaimDiagnosis"]] = relationship(
+        "ClaimDiagnosis", back_populates="claim"
+    )
+
+
+class ClaimLineItemAnalytics(Base):
+    """Claims line items analytics model for SQL Server (partitioned)."""
+    
+    __tablename__ = "claims_line_items"
+    __bind_key__ = "sqlserver"
+    
+    facility_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    patient_account_number: Mapped[str] = mapped_column(String(50), primary_key=True)
+    line_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    procedure_code: Mapped[str] = mapped_column(String(10), ForeignKey("rvu_data.procedure_code"), nullable=False)
+    modifier1: Mapped[Optional[str]] = mapped_column(String(2))
+    modifier2: Mapped[Optional[str]] = mapped_column(String(2))
+    modifier3: Mapped[Optional[str]] = mapped_column(String(2))
+    modifier4: Mapped[Optional[str]] = mapped_column(String(2))
+    units: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    charge_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    service_from_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    service_to_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    diagnosis_pointer: Mapped[Optional[str]] = mapped_column(String(4))
+    place_of_service: Mapped[Optional[str]] = mapped_column(String(2))
+    revenue_code: Mapped[Optional[str]] = mapped_column(String(4))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    rvu_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 4))
+    reimbursement_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
+    rendering_provider_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("physicians.rendering_provider_id"))
+    
+    # Relationships
+    claim: Mapped["ClaimAnalytics"] = relationship(
+        "ClaimAnalytics", back_populates="line_items"
+    )
+
+
+class ClaimDiagnosis(Base):
+    """Claims diagnosis model for SQL Server analytics."""
+    
+    __tablename__ = "claims_diagnosis"
+    __bind_key__ = "sqlserver"
+    
+    facility_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    patient_account_number: Mapped[str] = mapped_column(String(50), primary_key=True)
+    diagnosis_sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    diagnosis_code: Mapped[str] = mapped_column(String(20), nullable=False)
+    diagnosis_description: Mapped[Optional[str]] = mapped_column(String(255))
+    diagnosis_type: Mapped[Optional[str]] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    
+    # Relationships
+    claim: Mapped["ClaimAnalytics"] = relationship(
+        "ClaimAnalytics", back_populates="diagnosis"
+    )
+
+
+class FailedClaimAnalytics(Base):
+    """Failed claims analytics model for SQL Server (partitioned)."""
+    
+    __tablename__ = "failed_claims"
+    __bind_key__ = "sqlserver"
+    
+    claim_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    batch_id: Mapped[Optional[str]] = mapped_column(String(50))
+    facility_id: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("facilities.facility_id"))
+    patient_account_number: Mapped[Optional[str]] = mapped_column(String(50))
+    original_data: Mapped[Optional[str]] = mapped_column(Text)
+    failure_reason: Mapped[str] = mapped_column(String(1000), nullable=False)
+    failure_category: Mapped[str] = mapped_column(String(50), nullable=False)
+    processing_stage: Mapped[str] = mapped_column(String(50), nullable=False)
+    failed_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    repair_suggestions: Mapped[Optional[str]] = mapped_column(Text)
+    resolution_status: Mapped[str] = mapped_column(String(20), default="PENDING")
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(100))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(String(2000))
+    resolution_action: Mapped[Optional[str]] = mapped_column(String(50))
+    error_pattern_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("failed_claims_patterns.pattern_id"))
+    priority_level: Mapped[str] = mapped_column(String(10), default="MEDIUM")
+    impact_level: Mapped[str] = mapped_column(String(10), default="MEDIUM")
+    potential_revenue_loss: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    coder_id: Mapped[Optional[str]] = mapped_column(String(50))
+
+
+class PerformanceMetricsAnalytics(Base):
+    """Performance metrics analytics model for SQL Server (partitioned)."""
+    
+    __tablename__ = "performance_metrics"
+    __bind_key__ = "sqlserver"
+    
+    metric_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    metric_date: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    metric_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    facility_id: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("facilities.facility_id"))
+    claims_per_second: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
+    records_per_minute: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
+    cpu_usage_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
+    memory_usage_mb: Mapped[Optional[int]] = mapped_column(Integer)
+    database_response_time_ms: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+    queue_depth: Mapped[Optional[int]] = mapped_column(Integer)
+    error_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))
+    processing_accuracy: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))
+    revenue_per_claim: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
+    additional_metrics: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class DailyProcessingSummary(Base):
+    """Daily processing summary model for SQL Server analytics."""
+    
+    __tablename__ = "daily_processing_summary"
+    __bind_key__ = "sqlserver"
+    
+    summary_date: Mapped[datetime] = mapped_column(DateTime, primary_key=True)
+    facility_id: Mapped[Optional[str]] = mapped_column(String(20), ForeignKey("facilities.facility_id"), primary_key=True)
+    total_claims_processed: Mapped[Optional[int]] = mapped_column(Integer)
+    total_claims_failed: Mapped[Optional[int]] = mapped_column(Integer)
+    total_line_items: Mapped[Optional[int]] = mapped_column(Integer)
+    total_charge_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2))
+    total_reimbursement_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2))
+    average_reimbursement_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 4))
+    average_processing_time_seconds: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+    throughput_claims_per_hour: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
+    error_rate_percentage: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
+    ml_accuracy_percentage: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
+    validation_pass_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+
+
+class AuditLogAnalytics(Base):
+    """Audit log analytics model for SQL Server (partitioned)."""
+    
+    __tablename__ = "audit_log"
+    __bind_key__ = "sqlserver"
+    
+    audit_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    table_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    record_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    operation: Mapped[str] = mapped_column(String(20), nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(100))
+    session_id: Mapped[Optional[str]] = mapped_column(String(100))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500))
+    old_values: Mapped[Optional[str]] = mapped_column(Text)
+    new_values: Mapped[Optional[str]] = mapped_column(Text)
+    changed_columns: Mapped[Optional[str]] = mapped_column(String(500))
+    operation_timestamp: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.getutcdate(), nullable=False
+    )
+    reason: Mapped[Optional[str]] = mapped_column(String(500))
+    approval_required: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

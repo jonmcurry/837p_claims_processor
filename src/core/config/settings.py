@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     # SQL Server Configuration
     sql_host: str = Field(default="localhost")
     sql_port: int = Field(default=1433)
-    sql_database: str = Field(default="claims_production")
-    sql_user: str = Field(default="claims_user")
+    sql_database: str = Field(default="smart_pro_claims")
+    sql_user: str = Field(default="claims_analytics_user")
     sql_password: SecretStr
     sql_pool_size: int = Field(default=25)
     sql_pool_timeout: int = Field(default=20)

@@ -1,4 +1,4 @@
-# Professional Claims Processor-
+# Professional Claims Processor
 
 A high-performance, HIPAA-compliant claims processing system designed to process 100,000+ claims in 15 seconds while maintaining data integrity and regulatory compliance.
 

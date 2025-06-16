@@ -33,8 +33,8 @@ class StagingConfig:
     # SQL Server Configuration
     SQLSERVER_HOST = os.getenv("SQLSERVER_HOST", "sqlserver-staging")
     SQLSERVER_PORT = int(os.getenv("SQLSERVER_PORT", "1433"))
-    SQLSERVER_DB = os.getenv("SQLSERVER_DB", "claims_analytics_staging")
-    SQLSERVER_USER = os.getenv("SQLSERVER_USER", "sa")
+    SQLSERVER_DB = os.getenv("SQLSERVER_DB", "smart_pro_claims")
+    SQLSERVER_USER = os.getenv("SQLSERVER_USER", "claims_analytics_user")
     SQLSERVER_PASSWORD = os.getenv("SQLSERVER_PASSWORD")  # Required from env
     
     # Connection URLs

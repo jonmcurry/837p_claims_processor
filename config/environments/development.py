@@ -33,8 +33,8 @@ class DevelopmentConfig:
     # SQL Server Configuration (for testing dual database setup)
     SQLSERVER_HOST = os.getenv("SQLSERVER_HOST", "localhost")
     SQLSERVER_PORT = int(os.getenv("SQLSERVER_PORT", "1433"))
-    SQLSERVER_DB = os.getenv("SQLSERVER_DB", "claims_analytics_dev")
-    SQLSERVER_USER = os.getenv("SQLSERVER_USER", "sa")
+    SQLSERVER_DB = os.getenv("SQLSERVER_DB", "smart_pro_claims")
+    SQLSERVER_USER = os.getenv("SQLSERVER_USER", "claims_analytics_user")
     SQLSERVER_PASSWORD = os.getenv("SQLSERVER_PASSWORD", "DevPassword123!")
     
     # Connection URLs

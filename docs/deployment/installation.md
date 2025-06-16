@@ -161,27 +161,26 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 #### SQL Server Setup (Analytics Database)
 ```powershell
-# Create SQL Server database and user
-sqlcmd -S localhost -E -Q "CREATE DATABASE ClaimsProcessingProduction"
-
-# Create login and user for claims processing
+# Create SQL Server login for analytics user
 sqlcmd -S localhost -E -Q "CREATE LOGIN claims_analytics_user WITH PASSWORD = 'YourSecureSQLPassword'"
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "CREATE USER claims_analytics_user FOR LOGIN claims_analytics_user"
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "ALTER ROLE db_owner ADD MEMBER claims_analytics_user"
 
 # Create data directories
 New-Item -ItemType Directory -Force -Path "C:\Data"
 New-Item -ItemType Directory -Force -Path "C:\Logs"
 New-Item -ItemType Directory -Force -Path "C:\TempDB"
 
-# Apply SQL Server schema
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\sqlserver_schema.sql"
+# Apply SQL Server schema (creates smart_pro_claims database)
+sqlcmd -S localhost -E -i "database\sqlserver_schema.sql"
+
+# Grant permissions to analytics user
+sqlcmd -S localhost -E -d smart_pro_claims -Q "CREATE USER claims_analytics_user FOR LOGIN claims_analytics_user"
+sqlcmd -S localhost -E -d smart_pro_claims -Q "ALTER ROLE db_owner ADD MEMBER claims_analytics_user"
 
 # Create materialized views
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\materialized_views.sql"
+sqlcmd -S localhost -E -d smart_pro_claims -i "database\materialized_views.sql"
 
 # Verify database setup
-sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "SELECT COUNT(*) FROM sys.tables"
+sqlcmd -S localhost -E -d smart_pro_claims -Q "SELECT COUNT(*) FROM sys.tables"
 ```
 
 ### Step 8: Environment Configuration
@@ -211,7 +210,7 @@ DATABASE_POOL_SIZE=50
 DATABASE_MAX_OVERFLOW=100
 
 # SQL Server (Analytics Database)
-ANALYTICS_DATABASE_URL=mssql+pyodbc://claims_analytics_user:YourSecureSQLPassword@localhost/ClaimsProcessingProduction?driver=ODBC+Driver+17+for+SQL+Server
+ANALYTICS_DATABASE_URL=mssql+pyodbc://claims_analytics_user:YourSecureSQLPassword@localhost/smart_pro_claims?driver=ODBC+Driver+17+for+SQL+Server
 ANALYTICS_DATABASE_POOL_SIZE=30
 ANALYTICS_DATABASE_MAX_OVERFLOW=60
 
