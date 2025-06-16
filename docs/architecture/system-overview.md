@@ -212,29 +212,29 @@ Staging DB → ETL Process → Analytics DB → Materialized Views → Dashboard
 ## Deployment Architecture
 
 ### Environment Strategy
-- **Development**: Local development with Docker Compose
-- **Staging**: Production-like environment for testing
-- **Production**: High-availability cluster deployment
+- **Development**: Local development on Windows workstations
+- **Staging**: Windows Server environment for testing
+- **Production**: High-availability Windows Server cluster deployment
 
-### Container Orchestration
-- **Docker**: Application containerization
-- **Kubernetes**: Container orchestration and scaling
-- **Helm**: Package management and deployment
-- **Service Mesh**: Inter-service communication and security
+### Windows Service Integration
+- **Native Services**: Windows service deployment with automatic startup
+- **Service Management**: PowerShell and Windows Service Manager integration
+- **Process Monitoring**: Windows Performance Monitor integration
+- **Event Logging**: Windows Event Log integration
 
 ### CI/CD Pipeline
 - **Source Control**: Git with feature branch workflow
-- **Build**: Automated testing and container building
-- **Deployment**: Blue-green deployments with rollback capability
-- **Monitoring**: Deployment health monitoring
+- **Build**: Automated testing and MSI package building
+- **Deployment**: Blue-green deployments with Windows service management
+- **Monitoring**: Windows-native monitoring and health checks
 
 ## Disaster Recovery
 
 ### Backup Strategy
 - **Database Backups**: Automated daily backups with point-in-time recovery
-- **Configuration Backups**: Infrastructure as code
-- **Application Backups**: Container image registry
-- **Cross-Region Replication**: Geographic distribution
+- **Configuration Backups**: PowerShell DSC and infrastructure as code
+- **Application Backups**: MSI package repository and source code
+- **File System Backups**: Windows Server Backup for application data
 
 ### Recovery Procedures
 - **RTO**: Recovery Time Objective < 4 hours

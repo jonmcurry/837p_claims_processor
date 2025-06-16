@@ -103,9 +103,15 @@ METRICS_COLLECTION_INTERVAL=60
 CACHE_TTL_SECONDS=300
 ENABLE_CACHE_PRELOADING=false
 
-# File Storage
-UPLOAD_DIR=./uploads/dev/
+# File Storage (Windows paths)
+UPLOAD_DIR=C:\Claims_Processor\uploads\dev\
 MAX_FILE_SIZE_MB=10
+TEMP_DIR=C:\Claims_Processor\temp\dev\
+
+# Windows Service Configuration
+WINDOWS_SERVICE_NAME=ClaimsProcessorDev
+WINDOWS_SERVICE_DISPLAY_NAME=837P Claims Processor (Development)
+WINDOWS_SERVICE_DESCRIPTION=Development instance of HIPAA-compliant claims processing service
 ```
 
 ### Staging Environment
@@ -172,9 +178,15 @@ CACHE_TTL_SECONDS=1800
 ENABLE_CACHE_PRELOADING=true
 CACHE_WARM_UP_ON_START=true
 
-# File Storage
-UPLOAD_DIR=/app/uploads/staging/
+# File Storage (Windows paths)
+UPLOAD_DIR=C:\Claims_Processor\uploads\staging\
 MAX_FILE_SIZE_MB=50
+TEMP_DIR=C:\Claims_Processor\temp\staging\
+
+# Windows Service Configuration
+WINDOWS_SERVICE_NAME=ClaimsProcessorStaging
+WINDOWS_SERVICE_DISPLAY_NAME=837P Claims Processor (Staging)
+WINDOWS_SERVICE_DESCRIPTION=Staging instance of HIPAA-compliant claims processing service
 
 # Backup Configuration
 ENABLE_AUTOMATED_BACKUPS=true
@@ -251,10 +263,16 @@ ENABLE_CACHE_PRELOADING=true
 CACHE_WARM_UP_ON_START=true
 CACHE_PRELOAD_MINUTES_AHEAD=30
 
-# File Storage
-UPLOAD_DIR=/mnt/claims_storage/uploads/
+# File Storage (Windows paths)
+UPLOAD_DIR=C:\Claims_Processor\uploads\production\
 MAX_FILE_SIZE_MB=100
+TEMP_DIR=C:\Claims_Processor\temp\production\
 ENABLE_FILE_ENCRYPTION=true
+
+# Windows Service Configuration
+WINDOWS_SERVICE_NAME=ClaimsProcessor
+WINDOWS_SERVICE_DISPLAY_NAME=837P Claims Processor
+WINDOWS_SERVICE_DESCRIPTION=Production HIPAA-compliant claims processing service
 
 # Backup Configuration
 ENABLE_AUTOMATED_BACKUPS=true
@@ -636,47 +654,45 @@ class APIConfigSchema(Schema):
 
 ## Configuration Templates
 
-### Docker Compose Configuration
-```yaml
-# docker-compose.yml
-version: '3.8'
+### Windows Service Configuration
+```ini
+# config/windows_service.ini
+[Service]
+ServiceName=ClaimsProcessor
+DisplayName=837P Claims Processor
+Description=High-performance HIPAA-compliant claims processing service
+StartType=Automatic
+ServiceAccount=LocalSystem
+ExecutablePath=C:\Claims_Processor\venv\Scripts\python.exe
+Arguments=C:\Claims_Processor\scripts\windows_service.py
+WorkingDirectory=C:\Claims_Processor
 
-services:
-  claims_processor:
-    build: .
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - SECRET_KEY=${SECRET_KEY}
-    env_file:
-      - config/.env.${ENVIRONMENT:-development}
-    volumes:
-      - ./logs:/app/logs
-      - ./uploads:/app/uploads
-    ports:
-      - "${API_PORT:-8000}:8000"
-    depends_on:
-      - postgres
-      - redis
+[Logging]
+LogPath=C:\Claims_Processor\logs\service.log
+LogLevel=INFO
+MaxLogSize=100MB
+MaxLogFiles=10
+
+[Performance]
+ProcessPriority=Normal
+WorkerProcesses=8
+MaxMemoryMB=8192
 ```
 
-### Kubernetes ConfigMap
-```yaml
-# k8s/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: claims-processor-config
-data:
-  ENVIRONMENT: "production"
-  API_HOST: "0.0.0.0"
-  API_PORT: "8000"
-  API_WORKERS: "16"
-  BATCH_SIZE: "2000"
-  MAX_WORKERS: "20"
-  PROMETHEUS_ENABLED: "true"
-  GRAFANA_ENABLED: "true"
+### Windows Registry Configuration
+```powershell
+# scripts/configure_registry.ps1
+# Registry settings for production deployment
+
+# Set service recovery options
+sc failure ClaimsProcessor reset= 86400 actions= restart/60000/restart/60000/restart/60000
+
+# Configure Windows Event Log
+New-EventLog -LogName Application -Source "ClaimsProcessor" -ErrorAction SilentlyContinue
+
+# Set environment variables at system level
+[Environment]::SetEnvironmentVariable("CLAIMS_PROCESSOR_ENV", "production", "Machine")
+[Environment]::SetEnvironmentVariable("CLAIMS_PROCESSOR_CONFIG", "C:\Claims_Processor\config\.env.production", "Machine")
 ```
 
 ## Best Practices

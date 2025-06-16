@@ -166,35 +166,31 @@ class TestValidationEngine:
 # tests/integration/test_batch_processing.py
 import pytest
 import asyncio
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
+import time
+from src.processing.batch_processor.ultra_pipeline import BatchProcessor
+from src.core.database import get_db_session
+from sqlalchemy import text
 
 @pytest.fixture(scope="session")
-def postgres_container():
-    """PostgreSQL test container."""
-    with PostgresContainer("postgres:13") as postgres:
-        yield postgres
+def test_database_url():
+    """Test database URL for integration tests."""
+    return "postgresql://test_user:test_password@localhost:5433/test_claims_processor"
 
 @pytest.fixture(scope="session")
-def redis_container():
-    """Redis test container."""
-    with RedisContainer("redis:6") as redis:
-        yield redis
+def test_redis_url():
+    """Test Redis URL for integration tests."""
+    return "redis://localhost:6380/1"
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_end_to_end_claim_processing(postgres_container, redis_container):
+async def test_end_to_end_claim_processing(test_database_url, test_redis_url):
     """Test complete claim processing pipeline."""
-    
-    # Setup test environment
-    db_url = postgres_container.get_connection_url()
-    redis_url = redis_container.get_connection_url()
     
     # Initialize test data
     test_claims = await load_test_claims(count=100)
     
     # Process claims through complete pipeline
-    processor = BatchProcessor(db_url=db_url, redis_url=redis_url)
+    processor = BatchProcessor(db_url=test_database_url, redis_url=test_redis_url)
     
     start_time = time.time()
     results = await processor.process_batch(test_claims)
@@ -206,7 +202,7 @@ async def test_end_to_end_claim_processing(postgres_container, redis_container):
     assert (end_time - start_time) < 30  # 100 claims in <30 seconds
     
     # Verify database state
-    async with get_db_session(db_url) as session:
+    async with get_db_session(test_database_url) as session:
         processed_count = await session.scalar(
             text("SELECT COUNT(*) FROM staging.claims_837p WHERE status = 'processed'")
         )
@@ -539,9 +535,10 @@ class TestDataFactory:
 # tests/conftest.py
 import pytest
 import asyncio
-import docker
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
+import subprocess
+import time
+from pathlib import Path
+from src.core.config import config
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -551,35 +548,57 @@ def event_loop():
     loop.close()
 
 @pytest.fixture(scope="session")
-def docker_client():
-    """Docker client for container management."""
-    return docker.from_env()
-
-@pytest.fixture(scope="session")
 def test_database():
-    """PostgreSQL test database container."""
-    with PostgresContainer("postgres:13") as postgres:
-        # Initialize test database
-        connection_url = postgres.get_connection_url()
-        
-        # Run migrations
-        run_database_migrations(connection_url)
-        
-        # Load test data
-        load_test_data(connection_url)
-        
-        yield connection_url
+    """PostgreSQL test database setup."""
+    # Create test database
+    test_db_name = "test_claims_processor"
+    test_user = "test_user" 
+    test_password = "test_password"
+    
+    # Setup test database
+    setup_commands = [
+        f'createdb -U postgres {test_db_name}',
+        f'psql -U postgres -c "CREATE USER {test_user} WITH PASSWORD \'{test_password}\';"',
+        f'psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE {test_db_name} TO {test_user};"'
+    ]
+    
+    for cmd in setup_commands:
+        subprocess.run(cmd.split(), check=False)
+    
+    connection_url = f"postgresql://{test_user}:{test_password}@localhost:5432/{test_db_name}"
+    
+    # Run migrations
+    run_database_migrations(connection_url)
+    
+    # Load test data
+    load_test_data(connection_url)
+    
+    yield connection_url
+    
+    # Cleanup
+    subprocess.run(f'dropdb -U postgres {test_db_name}'.split(), check=False)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session") 
 def test_redis():
-    """Redis test container."""
-    with RedisContainer("redis:6") as redis:
-        yield redis.get_connection_url()
+    """Redis test setup - uses separate Redis database."""
+    # Use database 1 for testing (production uses database 0)
+    redis_url = "redis://localhost:6379/1"
+    
+    # Clear test database before tests
+    import redis
+    r = redis.from_url(redis_url)
+    r.flushdb()
+    
+    yield redis_url
+    
+    # Cleanup after tests
+    r.flushdb()
 
 @pytest.fixture
 def test_client(test_database, test_redis):
-    """Test client with test database."""
+    """Test client with test database and Redis."""
     from src.api.production_main import create_app
+    from fastapi.testclient import TestClient
     
     app = create_app(
         database_url=test_database,
@@ -589,6 +608,43 @@ def test_client(test_database, test_redis):
     
     with TestClient(app) as client:
         yield client
+
+def run_database_migrations(database_url: str):
+    """Run database migrations for test database."""
+    # Set test database URL temporarily
+    import os
+    original_db_url = os.environ.get('DATABASE_URL')
+    os.environ['DATABASE_URL'] = database_url
+    
+    try:
+        # Run Alembic migrations
+        from alembic.config import Config
+        from alembic import command
+        
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+        command.upgrade(alembic_cfg, "head")
+    finally:
+        # Restore original database URL
+        if original_db_url:
+            os.environ['DATABASE_URL'] = original_db_url
+
+def load_test_data(database_url: str):
+    """Load test data into test database."""
+    # Load minimal test data required for tests
+    test_data_scripts = [
+        "scripts/load_test_providers.py",
+        "scripts/load_test_payers.py", 
+        "scripts/load_test_validation_rules.py"
+    ]
+    
+    for script in test_data_scripts:
+        if Path(script).exists():
+            subprocess.run([
+                "python", script, 
+                "--database-url", database_url,
+                "--test-mode"
+            ], check=False)
 ```
 
 ## Continuous Integration Pipeline
@@ -635,28 +691,8 @@ jobs:
         file: ./coverage.xml
 
   integration-tests:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs: unit-tests
-    
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: test_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:6
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     
     steps:
     - uses: actions/checkout@v3
@@ -665,6 +701,16 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: 3.9
+    
+    - name: Setup PostgreSQL
+      run: |
+        choco install postgresql --params '/Password:test_password'
+        Start-Service postgresql-x64-13
+    
+    - name: Setup Redis
+      run: |
+        choco install memurai-developer
+        Start-Service Memurai
     
     - name: Install dependencies
       run: |
@@ -675,11 +721,11 @@ jobs:
       run: |
         pytest tests/integration/ -v
       env:
-        DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_db
+        DATABASE_URL: postgresql://postgres:test_password@localhost:5432/test_claims_processor
         REDIS_URL: redis://localhost:6379/0
 
   performance-tests:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs: integration-tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
@@ -707,7 +753,7 @@ jobs:
         path: performance-results/
 
   security-tests:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs: integration-tests
     
     steps:

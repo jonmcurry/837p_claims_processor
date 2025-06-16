@@ -1,18 +1,20 @@
 # Installation Guide
 
-This guide provides comprehensive instructions for installing and configuring the 837P Claims Processing System in different environments.
+This guide provides comprehensive instructions for installing and configuring the 837P Claims Processing System on Windows Server.
 
 ## Prerequisites
 
 ### System Requirements
 
 #### Minimum Requirements (Development)
+- **OS**: Windows Server 2019 or higher / Windows 10 Pro
 - **CPU**: 4 cores, 2.5GHz
 - **RAM**: 16GB
 - **Storage**: 100GB SSD
 - **Network**: 1Gbps connection
 
 #### Recommended Requirements (Production)
+- **OS**: Windows Server 2022 
 - **CPU**: 16+ cores, 3.0GHz
 - **RAM**: 64GB+
 - **Storage**: 1TB NVMe SSD
@@ -24,495 +26,429 @@ This guide provides comprehensive instructions for installing and configuring th
 #### Core Dependencies
 - **Python**: 3.9 or higher
 - **PostgreSQL**: 13.0 or higher
-- **Redis**: 6.0 or higher
-- **Docker**: 20.10 or higher
-- **Docker Compose**: 2.0 or higher
+- **Redis**: 6.0 or higher (Redis for Windows or Memurai)
+- **Git**: Latest version
+- **Visual Studio Build Tools**: For compiling Python packages
 
 #### Optional Dependencies
-- **Kubernetes**: 1.20+ (for production orchestration)
-- **NGINX**: 1.20+ (for load balancing)
+- **IIS**: For reverse proxy (alternative to NGINX)
 - **Prometheus**: 2.30+ (for monitoring)
 - **Grafana**: 8.0+ (for dashboards)
 
-## Installation Methods
+## Installation Steps
 
-### Method 1: Docker Compose (Recommended for Development)
+### Step 1: Install Python
 
-#### 1. Clone Repository
-```bash
+Download and install Python from the official website:
+
+```powershell
+# Download Python 3.9+ from python.org
+# Or use Chocolatey package manager
+choco install python --version=3.9.13
+
+# Verify installation
+python --version
+pip --version
+```
+
+### Step 2: Install PostgreSQL
+
+```powershell
+# Download PostgreSQL installer from postgresql.org
+# Or use Chocolatey
+choco install postgresql --params '/Password:YourSecurePassword'
+
+# Verify installation
+psql --version
+
+# Start PostgreSQL service
+Start-Service postgresql-x64-13
+Set-Service postgresql-x64-13 -StartupType Automatic
+```
+
+### Step 3: Install Redis
+
+```powershell
+# Option 1: Install Redis for Windows (community version)
+# Download from https://github.com/microsoftarchive/redis/releases
+
+# Option 2: Install Memurai (Redis-compatible, Windows-native)
+choco install memurai-developer
+
+# Start Redis service
+Start-Service Redis
+Set-Service Redis -StartupType Automatic
+
+# Verify Redis is running
+redis-cli ping
+```
+
+### Step 4: Install Git and Visual Studio Build Tools
+
+```powershell
+# Install Git
+choco install git
+
+# Install Visual Studio Build Tools (required for Python package compilation)
+choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools"
+```
+
+### Step 5: Clone Repository and Setup Environment
+
+```powershell
+# Clone repository
 git clone https://github.com/jonmcurry/837p_claims_processor.git
 cd 837p_claims_processor
+
+# Create virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Upgrade pip and install dependencies
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+
+# Install additional Windows-specific dependencies if needed
+pip install pywin32 wmi psutil
 ```
 
-#### 2. Environment Configuration
-```bash
-# Copy environment template
-cp config/.env.example config/.env.development
+### Step 6: Database Setup
 
-# Edit configuration (see Configuration section below)
-nano config/.env.development
-```
+```powershell
+# Create PostgreSQL database and user
+psql -U postgres
 
-#### 3. Start Services
-```bash
-# Start all services
-docker-compose up -d
-
-# Verify services are running
-docker-compose ps
-
-# Check logs
-docker-compose logs -f claims_processor
-```
-
-#### 4. Initialize Database
-```bash
-# Run database migrations
-docker-compose exec claims_processor python -m alembic upgrade head
-
-# Load initial data
-docker-compose exec claims_processor python -m scripts.load_initial_data
-```
-
-#### 5. Verify Installation
-```bash
-# Test API endpoint
-curl http://localhost:8000/health
-
-# Check processing pipeline
-curl http://localhost:8000/api/v1/status
-```
-
-### Method 2: Manual Installation
-
-#### 1. Install System Dependencies
-
-**Ubuntu/Debian:**
-```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install PostgreSQL
-sudo apt install postgresql postgresql-contrib -y
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-
-# Install Redis
-sudo apt install redis-server -y
-sudo systemctl start redis-server
-sudo systemctl enable redis-server
-
-# Install Python 3.9+
-sudo apt install python3.9 python3.9-venv python3.9-dev -y
-
-# Install additional dependencies
-sudo apt install build-essential libpq-dev -y
-```
-
-**CentOS/RHEL:**
-```bash
-# Install PostgreSQL
-sudo dnf install postgresql postgresql-server postgresql-contrib -y
-sudo postgresql-setup --initdb
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-
-# Install Redis
-sudo dnf install redis -y
-sudo systemctl start redis
-sudo systemctl enable redis
-
-# Install Python 3.9+
-sudo dnf install python39 python39-devel -y
-```
-
-#### 2. Create Database and User
-```sql
--- Connect as postgres user
-sudo -u postgres psql
-
--- Create database and user
+# In PostgreSQL prompt:
 CREATE DATABASE claims_processor;
-CREATE USER claims_user WITH PASSWORD 'secure_password';
+CREATE USER claims_user WITH PASSWORD 'YourSecurePassword';
 GRANT ALL PRIVILEGES ON DATABASE claims_processor TO claims_user;
 
--- Enable extensions
+# Enable required extensions
 \c claims_processor
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+\q
 ```
 
-#### 3. Python Environment Setup
-```bash
-# Create virtual environment
-python3.9 -m venv venv
-source venv/bin/activate
+### Step 7: Environment Configuration
 
-# Upgrade pip
-pip install --upgrade pip setuptools wheel
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install development dependencies (optional)
-pip install -r requirements-dev.txt
-```
-
-#### 4. Environment Configuration
-```bash
+```powershell
 # Copy environment template
-cp config/.env.example config/.env.development
+copy config\.env.example config\.env.production
 
 # Edit configuration file
-nano config/.env.development
+notepad config\.env.production
 ```
 
-#### 5. Database Migration
-```bash
-# Run database migrations
-python -m alembic upgrade head
+Configure the following key settings:
 
-# Load initial data
-python -m scripts.load_initial_data
-```
+```ini
+# config/.env.production
 
-#### 6. Start Application
-```bash
-# Start API server
-python -m src.api.production_main
+# Environment
+ENVIRONMENT=production
+DEBUG=false
+LOG_LEVEL=INFO
 
-# Start background workers (in separate terminals)
-python -m src.processing.batch_processor.ultra_pipeline
-python -m src.processing.ml_pipeline.advanced_predictor
-```
-
-### Method 3: Kubernetes Deployment
-
-#### 1. Prerequisites
-```bash
-# Install kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-
-# Install Helm
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-```
-
-#### 2. Create Namespace
-```bash
-kubectl create namespace claims-processor
-kubectl config set-context --current --namespace=claims-processor
-```
-
-#### 3. Deploy PostgreSQL
-```bash
-# Add Bitnami repository
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-
-# Deploy PostgreSQL
-helm install postgresql bitnami/postgresql \
-  --set auth.postgresPassword=secure_password \
-  --set auth.database=claims_processor \
-  --set primary.persistence.size=100Gi \
-  --set metrics.enabled=true
-```
-
-#### 4. Deploy Redis
-```bash
-# Deploy Redis
-helm install redis bitnami/redis \
-  --set auth.password=secure_password \
-  --set master.persistence.size=10Gi \
-  --set metrics.enabled=true
-```
-
-#### 5. Deploy Application
-```bash
-# Create ConfigMap
-kubectl create configmap claims-config --from-env-file=config/.env.production
-
-# Deploy application
-kubectl apply -f k8s/
-```
-
-## Configuration
-
-### Environment Variables
-
-Create and configure your environment file:
-
-```bash
-# config/.env.development
 # Database Configuration
-DATABASE_URL=postgresql://claims_user:secure_password@localhost:5432/claims_processor
-DATABASE_POOL_SIZE=20
-DATABASE_MAX_OVERFLOW=30
+DATABASE_URL=postgresql://claims_user:YourSecurePassword@localhost:5432/claims_processor
+DATABASE_POOL_SIZE=50
+DATABASE_MAX_OVERFLOW=100
 
-# Redis Configuration
+# Redis Configuration  
 REDIS_URL=redis://localhost:6379/0
 REDIS_PASSWORD=
-REDIS_MAX_CONNECTIONS=50
+REDIS_MAX_CONNECTIONS=100
 
 # API Configuration
 API_HOST=0.0.0.0
 API_PORT=8000
-API_WORKERS=4
-API_DEBUG=false
-
-# Processing Configuration
-BATCH_SIZE=1000
-MAX_WORKERS=8
-ASYNC_WORKERS=4
-
-# ML Configuration
-ML_MODEL_PATH=/models/
-ML_ENABLE_GPU=true
-ML_BATCH_SIZE=32
+API_WORKERS=8
 
 # Security Configuration
-SECRET_KEY=your-secret-key-here
-JWT_SECRET_KEY=your-jwt-secret-here
-ENCRYPTION_KEY=your-32-byte-encryption-key
+SECRET_KEY=your-secret-key-32-characters-minimum
+JWT_SECRET_KEY=your-jwt-secret-32-characters-minimum
+ENCRYPTION_KEY=your-32-character-encryption-key
 
-# Monitoring Configuration
-PROMETHEUS_ENABLED=true
-PROMETHEUS_PORT=9090
-GRAFANA_ENABLED=true
-GRAFANA_PORT=3000
+# File Paths (Windows-style)
+UPLOAD_DIR=C:\Claims_Processor\uploads\
+LOG_FILE=C:\Claims_Processor\logs\claims_processor.log
+TEMP_DIR=C:\Claims_Processor\temp\
 
-# Logging Configuration
-LOG_LEVEL=INFO
-LOG_FORMAT=json
-LOG_FILE=/var/log/claims_processor.log
+# Windows Service Configuration
+WINDOWS_SERVICE_NAME=ClaimsProcessor
+WINDOWS_SERVICE_DISPLAY_NAME=837P Claims Processor
+WINDOWS_SERVICE_DESCRIPTION=High-performance HIPAA-compliant claims processing service
 ```
 
-### Database Configuration
+### Step 8: Database Migration
 
-#### PostgreSQL Optimization Settings
-```sql
--- postgresql.conf optimizations
-shared_buffers = 8GB                    # 25% of RAM
-effective_cache_size = 24GB             # 75% of RAM
-work_mem = 256MB                        # For complex queries
-maintenance_work_mem = 2GB              # For VACUUM, CREATE INDEX
-checkpoint_completion_target = 0.9      # Smooth checkpoints
-wal_buffers = 16MB                      # WAL buffer size
-default_statistics_target = 100        # Query planning statistics
-random_page_cost = 1.1                 # SSD optimization
-effective_io_concurrency = 200         # Concurrent I/O operations
+```powershell
+# Run database migrations
+python -m alembic upgrade head
 
-# Enable query statistics
-shared_preload_libraries = 'pg_stat_statements'
-pg_stat_statements.track = all
-pg_stat_statements.save = on
+# Load initial data
+python -m scripts.load_initial_data --env=production
 ```
 
-#### Redis Configuration
-```conf
-# redis.conf optimizations
-maxmemory 4gb
-maxmemory-policy allkeys-lru
-save 900 1
-save 300 10
-save 60 10000
-rdbcompression yes
-rdbchecksum yes
+### Step 9: Create Required Directories
+
+```powershell
+# Create application directories
+New-Item -ItemType Directory -Force -Path "C:\Claims_Processor\logs"
+New-Item -ItemType Directory -Force -Path "C:\Claims_Processor\uploads"
+New-Item -ItemType Directory -Force -Path "C:\Claims_Processor\temp"
+New-Item -ItemType Directory -Force -Path "C:\Claims_Processor\backups"
+
+# Set appropriate permissions
+icacls "C:\Claims_Processor" /grant "IIS_IUSRS:(OI)(CI)F" /T
 ```
 
-### Security Configuration
+### Step 10: Install as Windows Service
 
-#### SSL/TLS Setup
-```bash
-# Generate SSL certificates
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout /etc/ssl/private/claims_processor.key \
-  -out /etc/ssl/certs/claims_processor.crt
+Create a Windows service installer script:
 
-# Set proper permissions
-chmod 600 /etc/ssl/private/claims_processor.key
-chmod 644 /etc/ssl/certs/claims_processor.crt
+```python
+# scripts/install_windows_service.py
+import os
+import sys
+import win32serviceutil
+import win32service
+import win32event
+import servicemanager
+import socket
+import time
+import logging
+
+class ClaimsProcessorService(win32serviceutil.ServiceFramework):
+    _svc_name_ = "ClaimsProcessor"
+    _svc_display_name_ = "837P Claims Processor"
+    _svc_description_ = "High-performance HIPAA-compliant claims processing service"
+    
+    def __init__(self, args):
+        win32serviceutil.ServiceFramework.__init__(self, args)
+        self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
+        socket.setdefaulttimeout(60)
+        
+    def SvcStop(self):
+        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+        win32event.SetEvent(self.hWaitStop)
+        
+    def SvcDoRun(self):
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                            servicemanager.PYS_SERVICE_STARTED,
+                            (self._svc_name_, ''))
+        self.main()
+        
+    def main(self):
+        # Import and start the application
+        import uvicorn
+        from src.api.production_main import app
+        
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            workers=1,  # Use 1 worker for Windows service
+            loop="asyncio"
+        )
+
+if __name__ == '__main__':
+    win32serviceutil.HandleCommandLine(ClaimsProcessorService)
 ```
 
-#### Firewall Configuration
-```bash
-# Ubuntu UFW
-sudo ufw allow 8000/tcp  # API
-sudo ufw allow 9090/tcp  # Prometheus
-sudo ufw allow 3000/tcp  # Grafana
-sudo ufw enable
+Install the service:
 
-# CentOS/RHEL firewalld
-sudo firewall-cmd --permanent --add-port=8000/tcp
-sudo firewall-cmd --permanent --add-port=9090/tcp
-sudo firewall-cmd --permanent --add-port=3000/tcp
-sudo firewall-cmd --reload
+```powershell
+# Install the Windows service
+python scripts\install_windows_service.py install
+
+# Start the service
+python scripts\install_windows_service.py start
+
+# Set service to start automatically
+sc config ClaimsProcessor start= auto
+```
+
+### Step 11: Configure IIS Reverse Proxy (Optional)
+
+If using IIS as a reverse proxy:
+
+```powershell
+# Install IIS and URL Rewrite module
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServer
+Enable-WindowsOptionalFeature -Online -FeatureName IIS-HttpRedirect
+
+# Download and install URL Rewrite module from Microsoft
+# Create web.config for reverse proxy
+```
+
+web.config example:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <system.webServer>
+        <rewrite>
+            <rules>
+                <rule name="Claims Processor API" stopProcessing="true">
+                    <match url="(.*)" />
+                    <action type="Rewrite" url="http://localhost:8000/{R:1}" />
+                </rule>
+            </rules>
+        </rewrite>
+    </system.webServer>
+</configuration>
 ```
 
 ## Post-Installation Setup
 
-### 1. Load Initial Data
+### 1. Verify Installation
 
-```bash
+```powershell
+# Test API endpoint
+Invoke-RestMethod -Uri "http://localhost:8000/health"
+
+# Check Windows service status
+Get-Service -Name "ClaimsProcessor"
+
+# Check logs
+Get-Content "C:\Claims_Processor\logs\claims_processor.log" -Tail 20
+```
+
+### 2. Load Test Data
+
+```powershell
 # Load medical codes and validation rules
-python -m scripts.load_medical_codes --source=cms_codes.csv
-python -m scripts.load_validation_rules --source=business_rules.json
+python -m scripts.load_medical_codes --source="data\cms_codes.csv"
+python -m scripts.load_validation_rules --source="data\business_rules.json"
 
 # Load provider and payer data
-python -m scripts.load_providers --source=providers.csv
-python -m scripts.load_payers --source=payers.csv
+python -m scripts.load_providers --source="data\providers.csv"
+python -m scripts.load_payers --source="data\payers.csv"
 ```
 
-### 2. Create Admin User
+### 3. Create Admin User
 
-```bash
+```powershell
 # Create first administrator user
-python -m scripts.create_admin_user \
-  --username=admin \
-  --email=admin@example.com \
-  --password=secure_admin_password
+python -m scripts.create_admin_user --username=admin --email=admin@company.com --password=SecurePassword123!
 ```
 
-### 3. Configure Monitoring
+### 4. Configure Windows Firewall
 
-```bash
-# Start monitoring stack
-docker-compose -f docker-compose.monitoring.yml up -d
+```powershell
+# Allow API port through Windows Firewall
+New-NetFirewallRule -DisplayName "Claims Processor API" -Direction Inbound -Port 8000 -Protocol TCP -Action Allow
 
-# Import Grafana dashboards
-python -m scripts.import_grafana_dashboards --dashboard-dir=monitoring/grafana/dashboards/
+# Allow Prometheus port (if using monitoring)
+New-NetFirewallRule -DisplayName "Prometheus" -Direction Inbound -Port 9090 -Protocol TCP -Action Allow
+
+# Allow Grafana port (if using monitoring)
+New-NetFirewallRule -DisplayName "Grafana" -Direction Inbound -Port 3000 -Protocol TCP -Action Allow
 ```
 
-### 4. Performance Tuning
+### 5. Setup Monitoring (Optional)
 
-```bash
-# Run performance optimization
-python -m scripts.optimize_database_performance
-python -m scripts.warm_cache_startup
-python -m scripts.tune_worker_processes
-```
+```powershell
+# Install Prometheus for Windows
+# Download from prometheus.io/download
+# Extract to C:\Prometheus\
 
-## Verification and Testing
+# Create Prometheus configuration
+# Copy monitoring\prometheus\prometheus.yml to C:\Prometheus\
 
-### Health Check
-```bash
-# Basic health check
-curl -f http://localhost:8000/health || exit 1
+# Install as Windows service
+# Use NSSM (Non-Sucking Service Manager) or similar tool
+choco install nssm
 
-# Detailed system status
-curl http://localhost:8000/api/v1/system/status
-```
+# Install Prometheus service
+nssm install prometheus "C:\Prometheus\prometheus.exe"
+nssm set prometheus Parameters "--config.file=C:\Prometheus\prometheus.yml"
+nssm set prometheus Start SERVICE_AUTO_START
 
-### Database Connectivity
-```bash
-# Test database connection
-python -c "
-from src.core.database import get_db_session
-async def test():
-    async with get_db_session() as session:
-        result = await session.execute('SELECT 1')
-        print('Database connection successful')
-import asyncio
-asyncio.run(test())
-"
-```
-
-### Processing Pipeline Test
-```bash
-# Submit test claim
-curl -X POST http://localhost:8000/api/v1/claims/submit \
-  -H "Content-Type: application/json" \
-  -d @test_data/sample_claim.json
-
-# Check processing status
-curl http://localhost:8000/api/v1/claims/status/test-claim-id
-```
-
-### Performance Test
-```bash
-# Run performance benchmarks
-python -m tests.performance.test_system_performance
-
-# Load test with sample data
-python -m scripts.load_test --claims=1000 --duration=300
+# Start Prometheus
+nssm start prometheus
 ```
 
 ## Troubleshooting
 
 ### Common Installation Issues
 
-#### Database Connection Issues
-```bash
-# Check PostgreSQL status
-sudo systemctl status postgresql
+#### Python Package Installation Failures
+```powershell
+# Ensure Visual Studio Build Tools are installed
+# Install specific packages that might fail
+pip install --only-binary=all psycopg2-binary
+pip install --upgrade setuptools wheel
+```
+
+#### PostgreSQL Connection Issues
+```powershell
+# Check PostgreSQL service status
+Get-Service -Name "postgresql*"
 
 # Test connection
-psql -h localhost -U claims_user -d claims_processor -c "SELECT 1;"
+psql -h localhost -U claims_user -d claims_processor
 
-# Check logs
-sudo tail -f /var/log/postgresql/postgresql-*.log
+# Check pg_hba.conf configuration
+# Usually located in: C:\Program Files\PostgreSQL\13\data\pg_hba.conf
 ```
 
 #### Redis Connection Issues
-```bash
-# Check Redis status
-sudo systemctl status redis-server
+```powershell
+# Check Redis/Memurai service
+Get-Service -Name "Redis*" -Or -Name "Memurai*"
 
-# Test connection
+# Test Redis connection
 redis-cli ping
 
-# Check configuration
-redis-cli config get "*"
+# Check Redis configuration
+# Default config location varies by installation method
 ```
 
-#### Permission Issues
-```bash
-# Fix file permissions
-sudo chown -R claims_user:claims_user /opt/claims_processor/
-sudo chmod -R 755 /opt/claims_processor/
+#### Windows Service Issues
+```powershell
+# Check service status and logs
+Get-Service -Name "ClaimsProcessor"
+Get-EventLog -LogName Application -Source "ClaimsProcessor" -Newest 10
 
-# Fix log permissions
-sudo mkdir -p /var/log/claims_processor/
-sudo chown claims_user:claims_user /var/log/claims_processor/
+# Restart service
+Restart-Service -Name "ClaimsProcessor"
+
+# Uninstall and reinstall service if needed
+python scripts\install_windows_service.py remove
+python scripts\install_windows_service.py install
 ```
 
-#### Memory Issues
-```bash
-# Check system memory
-free -h
+#### Performance Issues
+```powershell
+# Check system resources
+Get-Counter "\Processor(_Total)\% Processor Time"
+Get-Counter "\Memory\Available MBytes"
 
-# Monitor application memory usage
-ps aux | grep python
-
-# Adjust worker processes
-export MAX_WORKERS=4  # Reduce if memory constrained
+# Monitor application performance
+# Use Windows Performance Monitor (perfmon.exe)
+# Monitor custom application metrics
 ```
 
-### Log Analysis
-```bash
-# Application logs
-tail -f /var/log/claims_processor/app.log
+## Security Considerations
 
-# Error logs
-tail -f /var/log/claims_processor/error.log
+### Windows-Specific Security
 
-# Performance logs
-tail -f /var/log/claims_processor/performance.log
+1. **User Account Control**: Run services under dedicated service account
+2. **File Permissions**: Restrict access to application directories
+3. **Network Security**: Configure Windows Firewall appropriately
+4. **Update Management**: Keep Windows Server and dependencies updated
 
-# Access logs
-tail -f /var/log/claims_processor/access.log
-```
+```powershell
+# Create dedicated service account
+New-LocalUser -Name "claims_service" -Password (ConvertTo-SecureString "SecurePassword123!" -AsPlainText -Force) -AccountNeverExpires
+Add-LocalGroupMember -Group "Users" -Member "claims_service"
 
-### Service Management
-```bash
-# Docker Compose
-docker-compose restart claims_processor
-docker-compose logs -f claims_processor
-
-# Systemd (manual installation)
-sudo systemctl restart claims_processor
-sudo systemctl status claims_processor
-sudo journalctl -u claims_processor -f
+# Set service to run under dedicated account
+sc config ClaimsProcessor obj= ".\claims_service" password= "SecurePassword123!"
 ```
 
 ## Next Steps
@@ -522,12 +458,12 @@ After successful installation:
 1. **Review Configuration**: See [Configuration Management](./configuration.md)
 2. **Security Setup**: Review [Security Documentation](../security/)
 3. **Performance Tuning**: See [Performance Testing](../testing/performance-testing.md)
-4. **Monitoring Setup**: Configure [Monitoring and Alerting](../architecture/system-overview.md#monitoring--observability)
+4. **Monitoring Setup**: Configure [System Monitoring](../architecture/system-overview.md#monitoring--observability)
 5. **Production Deployment**: Follow [Production Deployment Guide](./production-deployment.md)
 
 ---
 
-For deployment-specific configurations, see:
-- [Docker Deployment](./docker-deployment.md)
+For Windows-specific deployment configurations, see:
+- [Windows Server Deployment](./windows-server-deployment.md)
 - [Production Deployment](./production-deployment.md)
 - [Configuration Management](./configuration.md)

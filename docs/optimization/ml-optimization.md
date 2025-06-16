@@ -281,9 +281,9 @@ def calculate_optimal_batch_size(model_info, gpu_memory, current_load):
 
 ### Debugging Commands
 
-```bash
+```powershell
 # Check model cache status
-curl http://localhost:8000/ml/cache/status
+Invoke-RestMethod -Uri "http://localhost:8000/ml/cache/status"
 
 # Monitor GPU usage
 nvidia-smi -l 1
@@ -292,7 +292,13 @@ nvidia-smi -l 1
 redis-cli --stat
 
 # View ML worker logs
-docker logs claims_processor_ml_worker -f
+Get-Content "C:\Claims_Processor\logs\ml_worker.log" -Tail 50 -Wait
+
+# Check Windows service status
+Get-Service -Name "ClaimsProcessor"
+
+# View Windows Event Logs
+Get-EventLog -LogName Application -Source "ClaimsProcessor" -Newest 20
 ```
 
 ## Best Practices
