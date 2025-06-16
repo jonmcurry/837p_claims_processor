@@ -624,5 +624,24 @@ BEGIN
 END;
 GO
 
+-- =============================================
+-- INITIAL DATA LOAD
+-- =============================================
+
+-- Load Standard Payers
+INSERT INTO dbo.core_standard_payers (payer_name, payer_code, payer_type, active) VALUES
+('Medicare', '1', 'Government', 1),
+('Medicaid', '2', 'Government', 1),
+('BlueCross', '3', 'Commercial', 1),
+('Others', '4', 'Commercial', 1),
+('Self Payer', '5', 'Self-Pay', 1),
+('HMO', '6', 'Commercial', 1),
+('Tricare', '7', 'Government', 1),
+('Commercial', '8', 'Commercial', 1),
+('Workers Comp', '9', 'Workers Compensation', 1),
+('MC Advantage', '10', 'Government', 1);
+
+PRINT 'Standard payers data loaded successfully.';
+
 PRINT 'Smart Pro Claims database schema created successfully.';
 GO
