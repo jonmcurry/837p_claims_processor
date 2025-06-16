@@ -4,7 +4,8 @@
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
       "Bash(git config:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }
