@@ -58,6 +58,9 @@ choco install python --version=3.9.13 -y
 # Install PostgreSQL
 choco install postgresql --params '/Password:SecurePassword123!' -y
 
+# Install SQL Server (Enterprise/Standard for production)
+choco install sql-server-2022 -y
+
 # Install Redis (Memurai - Redis-compatible for Windows)
 choco install memurai-developer -y
 
@@ -66,6 +69,9 @@ choco install git -y
 
 # Install Visual Studio Build Tools
 choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Workload.MSBuildTools" -y
+
+# Install SQL Server ODBC Driver
+choco install sql-server-odbc-driver -y
 
 # Install NVIDIA drivers and CUDA (if using GPU)
 choco install cuda -y
@@ -81,15 +87,22 @@ choco install nssm -y  # Non-Sucking Service Manager
 Start-Service postgresql-x64-13
 Set-Service postgresql-x64-13 -StartupType Automatic
 
+# Configure SQL Server
+Start-Service MSSQLSERVER
+Set-Service MSSQLSERVER -StartupType Automatic
+Start-Service SQLSERVERAGENT
+Set-Service SQLSERVERAGENT -StartupType Automatic
+
 # Configure Memurai/Redis
 Start-Service Memurai
 Set-Service Memurai -StartupType Automatic
 
 # Verify services are running
-Get-Service postgresql-x64-13, Memurai
+Get-Service postgresql-x64-13, MSSQLSERVER, SQLSERVERAGENT, Memurai
 
 # Test connectivity
 psql -U postgres -c "SELECT version();"
+sqlcmd -S localhost -E -Q "SELECT @@VERSION"
 redis-cli ping
 ```
 
@@ -140,6 +153,9 @@ pip install -r requirements.txt
 # Install Windows-specific packages
 pip install pywin32 wmi psutil
 
+# Install SQL Server connectivity packages
+pip install pyodbc sqlalchemy[mssql]
+
 # Set file permissions
 icacls $appRoot /grant "claims_service:(OI)(CI)F" /T
 icacls $appRoot /grant "IIS_IUSRS:(OI)(CI)RX" /T
@@ -147,15 +163,16 @@ icacls $appRoot /grant "IIS_IUSRS:(OI)(CI)RX" /T
 
 ### Step 6: Database Setup
 
+#### PostgreSQL Setup (Staging Database)
 ```powershell
-# Create production database
+# Create PostgreSQL production database
 psql -U postgres << EOF
-CREATE DATABASE claims_processor_prod;
-CREATE USER claims_prod_user WITH PASSWORD 'SecureDatabasePassword123!';
-GRANT ALL PRIVILEGES ON DATABASE claims_processor_prod TO claims_prod_user;
+CREATE DATABASE claims_processor_staging;
+CREATE USER claims_staging_user WITH PASSWORD 'SecureDatabasePassword123!';
+GRANT ALL PRIVILEGES ON DATABASE claims_processor_staging TO claims_staging_user;
 
 -- Enable extensions
-\c claims_processor_prod
+\c claims_processor_staging
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
@@ -187,6 +204,56 @@ max_parallel_workers = 16
 Restart-Service postgresql-x64-13
 ```
 
+#### SQL Server Setup (Analytics Database)
+```powershell
+# Install SQL Server 2022 Enterprise/Standard for production
+# Download from Microsoft Volume Licensing or use evaluation
+# choco install sql-server-2022 -y  # Use for Standard edition
+
+# For Enterprise edition, run installer manually with production license
+
+# Install SQL Server Management Studio
+choco install sql-server-management-studio -y
+
+# Configure SQL Server services
+Start-Service MSSQLSERVER
+Set-Service MSSQLSERVER -StartupType Automatic
+Start-Service SQLSERVERAGENT  
+Set-Service SQLSERVERAGENT -StartupType Automatic
+
+# Create production analytics database
+sqlcmd -S localhost -E -Q "CREATE DATABASE ClaimsProcessingProduction"
+
+# Create dedicated SQL login for analytics
+sqlcmd -S localhost -E -Q "CREATE LOGIN claims_analytics_user WITH PASSWORD = 'SecureAnalyticsPassword123!', CHECK_POLICY = OFF"
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "CREATE USER claims_analytics_user FOR LOGIN claims_analytics_user"
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "ALTER ROLE db_owner ADD MEMBER claims_analytics_user"
+
+# Create data directories for SQL Server files
+New-Item -ItemType Directory -Force -Path "C:\SQLData"
+New-Item -ItemType Directory -Force -Path "C:\SQLLogs" 
+New-Item -ItemType Directory -Force -Path "C:\SQLTempDB"
+
+# Configure SQL Server for high performance
+sqlcmd -S localhost -E -Q @"
+EXEC sp_configure 'max server memory (MB)', 32768;  -- 32GB for SQL Server
+EXEC sp_configure 'max degree of parallelism', 8;
+EXEC sp_configure 'cost threshold for parallelism', 25;
+EXEC sp_configure 'optimize for ad hoc workloads', 1;
+RECONFIGURE WITH OVERRIDE;
+"@
+
+# Apply SQL Server schema for analytics database
+Set-Location "$appRoot\app"
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\sqlserver_schema.sql"
+
+# Create materialized views for analytics
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\materialized_views.sql"
+
+# Verify SQL Server setup
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "SELECT COUNT(*) as TableCount FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'"
+```
+
 ### Step 7: Application Configuration
 
 ```powershell
@@ -201,10 +268,16 @@ ENVIRONMENT=production
 DEBUG=false
 LOG_LEVEL=WARNING
 
-# Database Configuration
-DATABASE_URL=postgresql://claims_prod_user:SecureDatabasePassword123!@localhost:5432/claims_processor_prod
+# Database Configuration - Dual Database Setup
+# PostgreSQL (Staging/Processing Database)
+DATABASE_URL=postgresql://claims_staging_user:SecureDatabasePassword123!@localhost:5432/claims_processor_staging
 DATABASE_POOL_SIZE=50
 DATABASE_MAX_OVERFLOW=100
+
+# SQL Server (Analytics Database)
+ANALYTICS_DATABASE_URL=mssql+pyodbc://claims_analytics_user:SecureAnalyticsPassword123!@localhost/ClaimsProcessingProduction?driver=ODBC+Driver+17+for+SQL+Server
+ANALYTICS_DATABASE_POOL_SIZE=30
+ANALYTICS_DATABASE_MAX_OVERFLOW=60
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379/0

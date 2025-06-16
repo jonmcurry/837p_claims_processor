@@ -91,6 +91,9 @@ choco install git
 
 # Install Visual Studio Build Tools (required for Python package compilation)
 choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools"
+
+# Install SQL Server ODBC driver for Python connectivity
+choco install sql-server-odbc-driver -y
 ```
 
 ### Step 5: Clone Repository and Setup Environment
@@ -108,29 +111,80 @@ python -m venv venv
 python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
-# Install additional Windows-specific dependencies if needed
+# Install additional Windows-specific dependencies
 pip install pywin32 wmi psutil
+
+# Install SQL Server connectivity packages
+pip install pyodbc sqlalchemy[mssql]
 ```
 
-### Step 6: Database Setup
+### Step 6: Install SQL Server
 
+```powershell
+# Download and install SQL Server 2022 Developer/Standard Edition
+# For production, use Standard or Enterprise edition
+choco install sql-server-2022 -y
+
+# Install SQL Server Management Studio (SSMS)
+choco install sql-server-management-studio -y
+
+# Start SQL Server services
+Start-Service MSSQLSERVER
+Set-Service MSSQLSERVER -StartupType Automatic
+
+Start-Service SQLSERVERAGENT
+Set-Service SQLSERVERAGENT -StartupType Automatic
+
+# Verify SQL Server installation
+sqlcmd -S localhost -E -Q "SELECT @@VERSION"
+```
+
+### Step 7: Database Setup
+
+#### PostgreSQL Setup (Staging Database)
 ```powershell
 # Create PostgreSQL database and user
 psql -U postgres
 
 # In PostgreSQL prompt:
-CREATE DATABASE claims_processor;
-CREATE USER claims_user WITH PASSWORD 'YourSecurePassword';
-GRANT ALL PRIVILEGES ON DATABASE claims_processor TO claims_user;
+CREATE DATABASE claims_processor_staging;
+CREATE USER claims_staging_user WITH PASSWORD 'YourSecurePassword';
+GRANT ALL PRIVILEGES ON DATABASE claims_processor_staging TO claims_staging_user;
 
 # Enable required extensions
-\c claims_processor
+\c claims_processor_staging
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 \q
 ```
 
-### Step 7: Environment Configuration
+#### SQL Server Setup (Analytics Database)
+```powershell
+# Create SQL Server database and user
+sqlcmd -S localhost -E -Q "CREATE DATABASE ClaimsProcessingProduction"
+
+# Create login and user for claims processing
+sqlcmd -S localhost -E -Q "CREATE LOGIN claims_analytics_user WITH PASSWORD = 'YourSecureSQLPassword'"
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "CREATE USER claims_analytics_user FOR LOGIN claims_analytics_user"
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "ALTER ROLE db_owner ADD MEMBER claims_analytics_user"
+
+# Create data directories
+New-Item -ItemType Directory -Force -Path "C:\Data"
+New-Item -ItemType Directory -Force -Path "C:\Logs"
+New-Item -ItemType Directory -Force -Path "C:\TempDB"
+
+# Apply SQL Server schema
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\sqlserver_schema.sql"
+
+# Create materialized views
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -i "database\materialized_views.sql"
+
+# Verify database setup
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "SELECT COUNT(*) FROM sys.tables"
+```
+
+### Step 8: Environment Configuration
 
 ```powershell
 # Copy environment template
@@ -150,10 +204,16 @@ ENVIRONMENT=production
 DEBUG=false
 LOG_LEVEL=INFO
 
-# Database Configuration
-DATABASE_URL=postgresql://claims_user:YourSecurePassword@localhost:5432/claims_processor
+# Database Configuration - Dual Database Setup
+# PostgreSQL (Staging/Processing Database)
+DATABASE_URL=postgresql://claims_staging_user:YourSecurePassword@localhost:5432/claims_processor_staging
 DATABASE_POOL_SIZE=50
 DATABASE_MAX_OVERFLOW=100
+
+# SQL Server (Analytics Database)
+ANALYTICS_DATABASE_URL=mssql+pyodbc://claims_analytics_user:YourSecureSQLPassword@localhost/ClaimsProcessingProduction?driver=ODBC+Driver+17+for+SQL+Server
+ANALYTICS_DATABASE_POOL_SIZE=30
+ANALYTICS_DATABASE_MAX_OVERFLOW=60
 
 # Redis Configuration  
 REDIS_URL=redis://localhost:6379/0
@@ -181,17 +241,21 @@ WINDOWS_SERVICE_DISPLAY_NAME=837P Claims Processor
 WINDOWS_SERVICE_DESCRIPTION=High-performance HIPAA-compliant claims processing service
 ```
 
-### Step 8: Database Migration
+### Step 9: Database Migration
 
 ```powershell
-# Run database migrations
+# Run PostgreSQL migrations
 python -m alembic upgrade head
+
+# Run SQL Server schema setup (already done in Step 7)
+# Verify SQL Server tables are created
+sqlcmd -S localhost -E -d ClaimsProcessingProduction -Q "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'"
 
 # Load initial data
 python -m scripts.load_initial_data --env=production
 ```
 
-### Step 9: Create Required Directories
+### Step 10: Create Required Directories
 
 ```powershell
 # Create application directories
@@ -204,7 +268,7 @@ New-Item -ItemType Directory -Force -Path "C:\Claims_Processor\backups"
 icacls "C:\Claims_Processor" /grant "IIS_IUSRS:(OI)(CI)F" /T
 ```
 
-### Step 10: Install as Windows Service
+### Step 11: Install as Windows Service
 
 Create a Windows service installer script:
 
@@ -270,7 +334,7 @@ python scripts\install_windows_service.py start
 sc config ClaimsProcessor start= auto
 ```
 
-### Step 11: Configure IIS Reverse Proxy (Optional)
+### Step 12: Configure IIS Reverse Proxy (Optional)
 
 If using IIS as a reverse proxy:
 
