@@ -1,0 +1,1 @@
+"""Caching layer for high-performance data access."""
