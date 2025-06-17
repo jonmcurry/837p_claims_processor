@@ -160,6 +160,24 @@ class PerformanceDashboard:
         # RVU Cache
         cache_status = "🔴 LOW" if metrics.rvu_cache_hit_rate < 80 else "🟢 EXCELLENT" if metrics.rvu_cache_hit_rate > 95 else "🟡 GOOD"
         print(f"   🏎️  RVU Cache: {metrics.rvu_cache_hit_rate:.1f}% hit rate ({metrics.rvu_cache_size:,} codes) {cache_status}")
+        
+        # ML Cache
+        ml_cache_status = "🔴 LOW" if metrics.ml_cache_hit_rate < 70 else "🟢 EXCELLENT" if metrics.ml_cache_hit_rate > 90 else "🟡 GOOD"
+        print(f"   🧠 ML Cache: {metrics.ml_cache_hit_rate:.1f}% hit rate {ml_cache_status}")
+        print()
+        
+        print(f"🤖 ML PERFORMANCE")
+        
+        # ML Processing
+        ml_throughput_status = "🟢 FAST" if metrics.ml_throughput_claims_per_sec > 5000 else "🟡 MODERATE" if metrics.ml_throughput_claims_per_sec > 2000 else "🔴 SLOW"
+        print(f"   ⚡ ML Throughput: {metrics.ml_throughput_claims_per_sec:.0f} claims/sec {ml_throughput_status}")
+        
+        # ML Latency
+        ml_latency_status = "🟢 FAST" if metrics.ml_prediction_time_ms < 10 else "🟡 MODERATE" if metrics.ml_prediction_time_ms < 50 else "🔴 SLOW"
+        print(f"   ⏱️  ML Latency: {metrics.ml_prediction_time_ms:.1f}ms {ml_latency_status}")
+        
+        # Active ML Predictions
+        print(f"   🔄 Active Predictions: {metrics.ml_active_predictions}")
         print()
         
     async def _display_performance_summary(self):

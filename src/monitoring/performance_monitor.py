@@ -11,6 +11,7 @@ from src.core.config.settings import settings
 from src.core.database.pool_manager import pool_manager
 from src.core.cache.rvu_cache import rvu_cache
 from src.core.database.batch_operations import batch_ops
+from src.processing.ml_pipeline.async_ml_manager import async_ml_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -41,6 +42,12 @@ class PerformanceMetrics:
     # Cache metrics
     rvu_cache_hit_rate: float = 0.0
     rvu_cache_size: int = 0
+    
+    # ML metrics
+    ml_prediction_time_ms: float = 0.0
+    ml_cache_hit_rate: float = 0.0
+    ml_throughput_claims_per_sec: float = 0.0
+    ml_active_predictions: int = 0
     
     # Processing quality metrics
     success_rate_percent: float = 0.0
@@ -138,6 +145,18 @@ class PerformanceMonitor:
             cache_stats = rvu_cache.get_cache_stats()
             metrics.rvu_cache_hit_rate = cache_stats.get('hit_rate_percent', 0)
             metrics.rvu_cache_size = cache_stats.get('local_cache_size', 0)
+            
+            # ML metrics
+            try:
+                ml_stats = async_ml_manager.get_processing_metrics()
+                ml_manager_metrics = ml_stats.get('ml_manager_metrics', {})
+                
+                metrics.ml_prediction_time_ms = ml_manager_metrics.get('avg_prediction_time_ms', 0)
+                metrics.ml_cache_hit_rate = ml_manager_metrics.get('cache_hit_rate_percent', 0)
+                metrics.ml_throughput_claims_per_sec = ml_manager_metrics.get('avg_throughput_claims_per_sec', 0)
+                metrics.ml_active_predictions = ml_manager_metrics.get('active_predictions', 0)
+            except Exception as e:
+                logger.warning("Failed to collect ML metrics", error=str(e))
             
             # Latency metrics
             if self.latency_measurements:

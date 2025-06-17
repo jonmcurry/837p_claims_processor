@@ -257,8 +257,8 @@ class OptimizedClaimsProcessor:
         logger.info("Shutting down ultra high-performance systems...")
         
         try:
-            # Shutdown parallel processor
-            parallel_processor.shutdown()
+            # Shutdown parallel processor (includes ML shutdown)
+            await parallel_processor.shutdown()
             
             # Close RVU cache
             await rvu_cache.close()

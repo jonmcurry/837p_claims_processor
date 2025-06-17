@@ -17,6 +17,7 @@ from src.core.config.settings import settings
 from src.core.database.batch_operations import batch_ops
 from src.core.database.pool_manager import pool_manager
 from src.core.cache.rvu_cache import rvu_cache
+from src.processing.ml_pipeline.async_ml_manager import async_ml_manager
 
 logger = structlog.get_logger(__name__)
 
@@ -107,16 +108,16 @@ class ParallelClaimsProcessor:
                 
             logger.info(f"Fetched {len(claims_data)} claims for parallel processing")
             
-            # Stage 2: Parallel validation
+            # Stage 2: Parallel validation + ML processing (combined for efficiency)
             stage_start = time.time()
-            validated_claims, validation_failures = await self._validate_claims_parallel(claims_data)
-            result.stage_times['validation'] = time.time() - stage_start
+            validated_claims, validation_failures = await self._validate_and_ml_process_parallel(claims_data)
+            result.stage_times['validation_ml'] = time.time() - stage_start
             result.failed_claims += len(validation_failures)
             
             if validation_failures:
                 await self._store_failed_claims_batch(validation_failures)
                 
-            logger.info(f"Validated {len(validated_claims)} claims, {len(validation_failures)} failed")
+            logger.info(f"Validated and ML processed {len(validated_claims)} claims, {len(validation_failures)} failed")
             
             # Stage 3: Parallel RVU calculation
             stage_start = time.time()
@@ -166,6 +167,7 @@ class ParallelClaimsProcessor:
         initialization_tasks = [
             pool_manager.initialize(),
             rvu_cache.initialize(),
+            async_ml_manager.initialize(),
         ]
         await asyncio.gather(*initialization_tasks, return_exceptions=True)
         
@@ -173,7 +175,27 @@ class ParallelClaimsProcessor:
         """Fetch claims data using optimized parallel queries."""
         return await batch_ops.fetch_claims_batch(batch_id, limit)
         
-    async def _validate_claims_parallel(self, claims_data: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    async def _validate_and_ml_process_parallel(self, claims_data: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+        """Combined validation and ML processing for maximum efficiency."""
+        logger.info(f"Starting combined validation and ML processing for {len(claims_data)} claims")
+        
+        # Step 1: Fast validation first to filter out obviously invalid claims
+        validated_claims, validation_failures = await self._fast_validate_claims_parallel(claims_data)
+        
+        if not validated_claims:
+            return [], validation_failures
+            
+        # Step 2: ML processing on validated claims using optimized ML manager
+        ml_approved_claims, ml_rejected_claims = await async_ml_manager.predict_claims_pipeline_optimized(validated_claims)
+        
+        # Combine all failures
+        all_failures = validation_failures + ml_rejected_claims
+        
+        logger.info(f"Combined validation+ML: {len(claims_data)} → {len(ml_approved_claims)} approved, {len(all_failures)} rejected")
+        
+        return ml_approved_claims, all_failures
+        
+    async def _fast_validate_claims_parallel(self, claims_data: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
         """Validate claims in parallel with high concurrency."""
         validated_claims = []
         failed_claims = []
@@ -459,9 +481,10 @@ class ParallelClaimsProcessor:
             improvement_needed = 6667 - result.throughput
             logger.warning(f"Target not met. Need {improvement_needed:.0f} more claims/sec")
             
-    def shutdown(self):
+    async def shutdown(self):
         """Shutdown parallel processor."""
         self.worker_pool.shutdown()
+        await async_ml_manager.shutdown()
 
 
 # Global parallel processor instance
