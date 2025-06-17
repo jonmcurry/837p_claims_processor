@@ -36,9 +36,9 @@ def load_env_file(env_path='config/.env'):
         # Try .env.example if .env doesn't exist
         if os.path.exists('config/.env.example'):
             env_path = 'config/.env.example'
-            print(f"⚠️  Using .env.example - copy to .env for production use")
+            print(f"WARNING: Using .env.example - copy to .env for production use")
         else:
-            print(f"❌ Environment file '{env_path}' not found!")
+            print(f"ERROR: Environment file '{env_path}' not found!")
             return None
     
     try:
@@ -53,7 +53,7 @@ def load_env_file(env_path='config/.env'):
                         env_vars[key.strip()] = value.strip()
         return env_vars
     except Exception as e:
-        print(f"❌ Error loading env file: {e}")
+        print(f"ERROR: Error loading env file: {e}")
         return None
 
 def build_connection_strings(env_vars):
@@ -69,7 +69,7 @@ def build_connection_strings(env_vars):
     # Override if it's the default dev database
     if pg_db == 'claims_processor_dev':
         pg_db = 'claims_staging'
-        print(f"📝 Note: Using 'claims_staging' database instead of 'claims_processor_dev'")
+        print(f"NOTE: Using 'claims_staging' database instead of 'claims_processor_dev'")
     
     pg_conn = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
     
@@ -84,7 +84,7 @@ def build_connection_strings(env_vars):
     # Override if it's the default dev database
     if ss_db == 'claims_analytics_dev':
         ss_db = 'smart_pro_claims'
-        print(f"📝 Note: Using 'smart_pro_claims' database instead of 'claims_analytics_dev'")
+        print(f"NOTE: Using 'smart_pro_claims' database instead of 'claims_analytics_dev'")
     
     # Build SQL Server connection string
     ss_conn = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={ss_host};DATABASE={ss_db};UID={ss_user};PWD={ss_pass}"
@@ -225,7 +225,7 @@ class ClaimsProcessor:
         
         try:
             # Connect to databases
-            print("🔄 Starting Complete Claims Processing Pipeline...")
+            print("Starting Complete Claims Processing Pipeline...")
             pg_conn = psycopg2.connect(self.pg_conn_string)
             pg_cursor = pg_conn.cursor()
             
@@ -248,7 +248,7 @@ class ClaimsProcessor:
             
             # Get validation rules
             rules = self.get_validation_rules(pg_cursor)
-            print(f"📋 Loaded {len(rules)} validation rules")
+            print(f"Loaded {len(rules)} validation rules")
             
             # Get pending claims
             batch_size = self.config.get('processing', {}).get('batch_size', 1000)
@@ -272,10 +272,10 @@ class ClaimsProcessor:
             self.stats['total'] = len(claims)
             
             if not claims:
-                print("❌ No pending claims found")
+                print("No pending claims found")
                 return
             
-            print(f"📊 Processing {len(claims)} pending claims...")
+            print(f"Processing {len(claims)} pending claims...")
             
             # Process each claim
             for claim in claims:
@@ -333,10 +333,10 @@ class ClaimsProcessor:
                     
                     # Show progress
                     if self.stats['processed'] % 10 == 0:
-                        print(f"   ✓ Processed {self.stats['processed']}/{self.stats['total']} claims...")
+                        print(f"   Processed {self.stats['processed']}/{self.stats['total']} claims...")
                     
                 except Exception as e:
-                    print(f"   ❌ Error processing claim {claim_id}: {e}")
+                    print(f"   ERROR processing claim {claim_id}: {e}")
                     
                     # Record as failed claim
                     self.record_failed_claim(
@@ -366,7 +366,7 @@ class ClaimsProcessor:
             self.show_results(pg_cursor, ss_cursor)
             
         except Exception as e:
-            print(f"❌ Fatal error: {e}")
+            print(f"FATAL ERROR: {e}")
             if pg_conn:
                 pg_conn.rollback()
             if ss_conn:
@@ -429,6 +429,13 @@ class ClaimsProcessor:
         """Transfer validated claim to SQL Server."""
         facility_id = claim[2]
         patient_account_number = claim[3]
+        
+        # Validate that facility exists in SQL Server before inserting
+        ss_cursor.execute("SELECT COUNT(*) FROM dbo.facilities WHERE facility_id = ?", (facility_id,))
+        facility_exists = ss_cursor.fetchone()[0] > 0
+        
+        if not facility_exists:
+            raise ValueError(f"Facility {facility_id} not found in SQL Server facilities table. Cannot transfer claim.")
         
         # Extract patient name components
         patient_first_name = claim[4] or ''
@@ -550,11 +557,11 @@ class ClaimsProcessor:
     def show_results(self, pg_cursor, ss_cursor):
         """Display processing results."""
         print("\n" + "="*60)
-        print("✅ CLAIMS PROCESSING COMPLETE")
+        print("CLAIMS PROCESSING COMPLETE")
         print("="*60)
         
         # Processing stats
-        print(f"\n📊 Processing Statistics:")
+        print(f"\nProcessing Statistics:")
         print(f"   • Total Claims: {self.stats['total']}")
         print(f"   • Successfully Processed: {self.stats['processed']}")
         print(f"   • Failed: {self.stats['failed']}")
@@ -564,7 +571,7 @@ class ClaimsProcessor:
         
         # Validation failures breakdown
         if self.stats['validation_failures']:
-            print(f"\n❌ Validation Failures by Type:")
+            print(f"\nValidation Failures by Type:")
             for error_type, count in sorted(self.stats['validation_failures'].items(), 
                                           key=lambda x: x[1], reverse=True):
                 print(f"   • {error_type}: {count}")
@@ -577,7 +584,7 @@ class ClaimsProcessor:
             ORDER BY processing_status
         """)
         
-        print(f"\n📋 PostgreSQL Claims Status:")
+        print(f"\nPostgreSQL Claims Status:")
         for status, count in pg_cursor.fetchall():
             print(f"   • {status}: {count}")
         
@@ -588,7 +595,7 @@ class ClaimsProcessor:
         ss_cursor.execute("SELECT COUNT(*) FROM dbo.claims_line_items")
         ss_lines_count = ss_cursor.fetchone()[0]
         
-        print(f"\n💾 SQL Server Status:")
+        print(f"\nSQL Server Status:")
         print(f"   • Total Claims: {ss_claims_count}")
         print(f"   • Total Line Items: {ss_lines_count}")
         
@@ -602,7 +609,7 @@ class ClaimsProcessor:
         
         failed = pg_cursor.fetchall()
         if failed:
-            print(f"\n🚨 Recent Failed Claims:")
+            print(f"\nRecent Failed Claims:")
             for claim_ref, category, reason in failed:
                 print(f"   • {claim_ref}: [{category}] {reason[:60]}...")
 
@@ -635,7 +642,7 @@ def main():
     if not pg_conn or not ss_conn:
         env_vars = load_env_file(args.env)
         if not env_vars:
-            print("❌ Failed to load environment configuration. Exiting.")
+            print("ERROR: Failed to load environment configuration. Exiting.")
             print("   Make sure config/.env exists (copy from config/.env.example)")
             sys.exit(1)
         
@@ -649,10 +656,10 @@ def main():
     # Load processing configuration
     config = load_processing_config()
     
-    print(f"📋 Configuration loaded from: {args.env}")
-    print(f"🔄 Batch size: {config.get('processing', {}).get('batch_size', 1000)}")
-    print(f"💵 Conversion factor: ${config.get('processing', {}).get('conversion_factor', 38.87)}")
-    print(f"🔒 Environment: {env_vars.get('ENVIRONMENT', 'development') if 'env_vars' in locals() else 'custom'}")
+    print(f"Configuration loaded from: {args.env}")
+    print(f"Batch size: {config.get('processing', {}).get('batch_size', 1000)}")
+    print(f"Conversion factor: ${config.get('processing', {}).get('conversion_factor', 38.87)}")
+    print(f"Environment: {env_vars.get('ENVIRONMENT', 'development') if 'env_vars' in locals() else 'custom'}")
     
     # Run the processor
     processor = ClaimsProcessor(pg_conn, ss_conn, config)
