@@ -18,4 +18,4 @@ app.layout = create_main_layout()
 if __name__ == '__main__':
     # Set host to '0.0.0.0' to make it accessible on your network
     # For development, debug=True is helpful for live reloading and error messages
-    app.run_server(debug=True, host='0.0.0.0', port=8050)
+    app.run(debug=True, host='0.0.0.0', port=8050)

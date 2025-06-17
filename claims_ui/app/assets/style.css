@@ -1,187 +1,273 @@
-/* General Body Styles */
+/* === General Body & App Container === */
 body {
-    font-family: Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f8f9fa; /* Light gray background */
-    color: #333; /* Default text color */
+    background-color: #f0f2f5; /* Lighter, common app background */
+    color: #333;
+    line-height: 1.6;
 }
 
-/* Main Application Header */
+#react-entry-point {
+    /* If you have a root div for Dash app */
+}
+
+/* === Main Application Header === */
 .app-header {
-    background-color: #343a40; /* Dark background for header */
+    background-color: #001529; /* Dark blue/charcoal - common for enterprise sidebars/headers */
     color: white;
-    padding: 15px 20px;
-    text-align: center;
-    border-bottom: 3px solid #007bff; /* Accent color border */
+    padding: 12px 24px;
+    text-align: left;
+    box-shadow: 0 2px 8px #f0f1f2;
+    display: flex;
+    align-items: center;
 }
 
 .app-header h1 {
     margin: 0;
-    font-size: 1.8em;
+    font-size: 1.6em;
+    font-weight: 600;
 }
 
-/* Tab Container and Styling */
+/* === Tab Container & Styling === */
 .tab-container {
-    padding: 15px;
-    background-color: #ffffff; /* White background for tab content area */
-    border-radius: 0 0 5px 5px;
+    padding: 0px 24px 24px 24px; /* More padding around content area */
 }
 
-/* Individual Tab Styling (using Dash's default classes or custom ones) */
-.custom-tabs-container .Select-control {
-    border-radius: 3px;
+/* Style Dash Tabs themselves */
+.custom-tabs-container .dash-tabs {
+    background-color: #fff;
+    border-bottom: 1px solid #d9d9d9;
+    padding: 0 20px;
 }
 
-.custom-tabs-container .tab--selected {
-    font-weight: bold;
-    border-color: #007bff !important;
+.custom-tabs-container .dash-tab {
+    padding: 12px 20px;
+    color: #595959;
+    border: none !important; /* Override default borders */
+    border-bottom: 2px solid transparent !important; /* For selected state */
+    transition: color 0.3s, border-bottom-color 0.3s;
+}
+
+.custom-tabs-container .dash-tab:hover {
+    color: #007bff;
+}
+
+.custom-tabs-container .dash-tab--selected {
     color: #007bff !important;
+    border-bottom: 2px solid #007bff !important;
+    font-weight: 500;
 }
 
-/* Filter Section Styling */
+#main-content-area {
+    background-color: #ffffff;
+    padding: 24px;
+    border: 1px solid #d9d9d9; /* Border for content area */
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+}
+
+/* === Card-like Sections (for filters, graphs, tables) === */
+.card-section {
+    background-color: #ffffff;
+    padding: 20px;
+    border: 1px solid #e8e8e8;
+    border-radius: 4px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-section h4, .card-section h5 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: #262626; /* Darker text for titles */
+    font-size: 1.15em; /* Slightly larger */
+    font-weight: 500;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 12px;
+}
+
+/* Use .filter-section, .graph-container, .table-container with .card-section if you want this style */
 .filter-section {
-    padding: 15px;
-    border: 1px solid #dee2e6; /* Lighter border */
-    border-radius: 5px;
-    margin-bottom: 20px;
-    background-color: #ffffff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    /* Extends .card-section */
 }
-
-.filter-section h4 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    color: #007bff; /* Accent color for filter titles */
-    font-size: 1.2em;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 10px;
-}
-
-/* Graph Container Styling */
 .graph-container {
-    padding: 15px;
-    border: 1px solid #dee2e6;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    background-color: #ffffff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    /* Extends .card-section */
 }
-
-.graph-container h5 {
-    margin-top: 0;
-    text-align: center;
-    color: #495057;
-}
-
-/* Table Container Styling */
 .table-container {
+    /* Extends .card-section */
+}
+.details-container {
+    background-color: #f9f9f9;
     padding: 15px;
-    border: 1px solid #dee2e6;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    background-color: #ffffff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: 1px solid #e8e8e8;
+    border-radius: 4px;
+    margin-top: 15px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
 }
 
-/* KPI Display Styling */
+/* === KPI Display Styling === */
 .kpi-summary-pm {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-around;
-    padding: 10px;
-    border: 1px solid #dee2e6;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    background-color: #ffffff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    display: grid; /* Use grid for better alignment */
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Responsive grid */
+    gap: 16px; /* Spacing between items */
+    padding: 0; /* Remove padding if items have their own */
+    margin-bottom: 24px;
 }
 
 .kpi-item {
-    padding: 10px 15px;
-    margin: 5px;
-    border: 1px solid #e9ecef;
+    padding: 16px;
+    background-color: #ffffff;
+    border: 1px solid #e8e8e8;
     border-radius: 4px;
-    background-color: #f8f9fa;
-    text-align: center;
-    min-width: 150px; /* Ensure KPIs have some width */
+    text-align: left; /* Align text to left for typical KPI card */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .kpi-item .kpi-title {
-    font-size: 0.9em;
-    color: #6c757d; /* Muted color for title */
-    margin-bottom: 5px;
+    font-size: 0.85em;
+    color: #8c8c8c; /* Lighter, secondary text color */
+    margin-bottom: 6px;
+    display: block; /* Ensure it takes full width */
 }
 
 .kpi-item .kpi-value {
-    font-size: 1.4em;
-    font-weight: bold;
-    color: #007bff; /* Accent color for value */
+    font-size: 1.75em;
+    font-weight: 600; /* Bold value */
+    color: #262626; /* Dark primary color for value */
 }
 
-/* General Dash Component Styling (Dropdowns, DatePickers) */
-.filter-section .Select-control, 
-.filter-section .DateInput_input {
-    border-radius: 3px;
+/* === Form Components (Dropdowns, DatePickers, Buttons) === */
+
+/* General wrapper for form elements to control spacing */
+.form-element-wrapper {
+    margin-bottom: 16px;
 }
 
-.filter-section .SingleDatePickerInput__withBorder {
-    border-radius: 3px;
-    border: 1px solid #ced4da;
+/* Dash Dropdowns (using .Select-control class) */
+.Select-control {
+    border-radius: 4px !important;
+    border: 1px solid #d9d9d9 !important;
+    transition: all 0.3s;
+}
+.Select-control:hover {
+    border-color: #007bff !important;
+}
+.Select--multi .Select-value {
+    background-color: #e6f7ff !important; /* Light blue for selected items */
+    border: 1px solid #91d5ff !important;
+    color: #0056b3 !important;
+    border-radius: 3px !important;
 }
 
-.filter-section .DateRangePickerInput__withBorder {
-    border-radius: 3px;
-    border: 1px solid #ced4da;
+/* DatePicker */
+.DateInput_input, .DateInput_input__focused {
+    font-size: 0.9em;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid #d9d9d9;
+}
+.DateRangePickerInput, .SingleDatePickerInput {
+    border-radius: 4px;
+    overflow: hidden; /* To make border-radius apply to children */
+}
+.DateRangePickerInput:hover, .SingleDatePickerInput:hover {
+   /* border: 1px solid #007bff; */ /* Handled by child input hover */
 }
 
-/* Button Styling */
-.filter-section button {
+/* Dash Input components */
+input[type="text"],
+input[type="number"] {
+    padding: 8px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    font-size: 0.9em;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+input[type="text"]:focus,
+input[type="number"]:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,.25);
+    outline: none;
+}
+
+/* Buttons */
+button, .dash-html-components-button {
     background-color: #007bff;
     color: white;
     border: none;
-    padding: 8px 15px;
+    padding: 8px 18px; /* Slightly more padding */
     text-align: center;
     text-decoration: none;
     display: inline-block;
-    font-size: 1em;
-    border-radius: 3px;
+    font-size: 0.95em;
+    font-weight: 500;
+    border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.2s ease-in-out;
+    transition: background-color 0.2s ease-in-out, box-shadow 0.2s;
 }
 
-.filter-section button:hover {
+button:hover, .dash-html-components-button:hover {
     background-color: #0056b3;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Horizontal Rule */
-hr {
-    border: 0;
-    border-top: 1px solid #dee2e6;
-    margin-top: 20px;
-    margin-bottom: 20px;
-}
-
-/* Utility class for simple rows of components */
-.component-row {
-    display: flex;
-    flex-wrap: wrap; /* Allow wrapping on smaller screens */
-    justify-content: space-between; /* Distribute items */
-    align-items: flex-start; /* Align items to the top */
-    margin-bottom: 10px;
-}
-
-.component-row > div {
-    flex: 1; /* Allow items to grow */
-    margin-right: 10px; /* Spacing between items */
-    min-width: 250px; /* Minimum width before wrapping */
-}
-
-.component-row > div:last-child {
-    margin-right: 0;
-}
-
-/* DataTable specific styling - already in Python but can be augmented */
+/* === DataTable Styling === */
 .dash-spreadsheet-container table {
+    font-size: 0.88em; /* Slightly smaller for more data */
+    border-collapse: collapse; /* Cleaner borders */
+}
+
+.dash-spreadsheet-container th {
+    background-color: #f0f2f5 !important; /* Header background */
+    color: #262626 !important; /* Header text */
+    font-weight: 500 !important;
+    padding: 10px 8px !important;
+    border-bottom: 1px solid #d9d9d9 !important;
+}
+
+.dash-spreadsheet-container td {
+    padding: 8px !important;
+    border-bottom: 1px solid #f0f0f0 !important; /* Lighter row separators */
+    color: #595959;
+}
+
+/* DataTable filter input */
+.dash-filter input {
+    padding: 4px 6px;
+    border: 1px solid #d9d9d9;
+    border-radius: 3px;
     font-size: 0.9em;
 }
+
+/* DataTable export button */
+.export {
+    background-color: #28a745 !important; /* Green for export */
+    color: white !important;
+    border-radius: 4px !important;
+    padding: 5px 10px !important;
+    font-size: 0.85em !important;
+    margin-bottom: 10px !important; /* Space below export button */
+}
+.export:hover {
+    background-color: #1e7e34 !important;
+}
+
+/* === Horizontal Rule === */
+hr {
+    border: 0;
+    border-top: 1px solid #e8e8e8;
+    margin-top: 24px;
+    margin-bottom: 24px;
+}
+
+/* === Utility Classes (Optional) === */
+.text-center {
+    text-align: center;
+}
+.mb-1 { margin-bottom: 0.25rem !important; }
+.mb-2 { margin-bottom: 0.5rem !important; }
+.mb-3 { margin-bottom: 1rem !important; }
+.mt-1 { margin-top: 0.25rem !important; }
+.mt-2 { margin-top: 0.5rem !important; }
+.mt-3 { margin-top: 1rem !important; }
