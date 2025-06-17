@@ -5,14 +5,14 @@ def create_processed_claims_layout():
     return html.Div([
         # Filters Card
         html.Div([
-            html.H4("Processed Claims Filters"), # Styled by .dashboard-card > h4
+            html.Div(html.H4("Processed Claims Filters"), className="dashboard-card-header"),
             html.Div([
                 dcc.Dropdown(
                     id='facility-filter-pc', 
                     placeholder='Select Facility(s)...', 
                     multi=True,
                 ),
-            ], className='form-element-wrapper'), # Consistent spacing for form elements
+            ], className='form-element-wrapper'),
             html.Div([
                 dcc.Dropdown(
                     id='payer-filter-pc', 
@@ -29,25 +29,25 @@ def create_processed_claims_layout():
                 ),
             ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-pc-button', n_clicks=0)
-        ], className='dashboard-card'), # Applied .dashboard-card
+        ], className='dashboard-card'),
 
-        # Data Table Card
+        # This outer Div will hold the table and the details side-by-side
         html.Div([
-            # Optional: Use a card header for the table title
-            # html.Div(html.H4("Claims Data"), className="dashboard-card-header"),
-            # html.Div([ # Content wrapper if header is used
-            dash_table.DataTable(
-                id='processed-claims-table',
-                columns=[],
-                data=[],
-                # COMMON_DATATABLE_PROPS are applied in callbacks.py
+            # Data Table Card (takes up more space)
+            html.Div([
+                dash_table.DataTable(
+                    id='processed-claims-table',
+                    columns=[],
+                    data=[],
+                    # COMMON_DATATABLE_PROPS are applied in callbacks.py
+                )
+            ], className='dashboard-card table-container', style={'flex': '3', 'marginRight': '24px'}),
+            
+            # Selected Row Details Card (takes up less space)
+            html.Div(
+                id='selected-claim-details-pc', 
+                className='dashboard-card details-container',
+                style={'flex': '1'}
             )
-            # ], className="dashboard-card-content") # if header is used
-        ], className='dashboard-card table-container'), # .table-container for specific table card needs
-        
-        # Selected Row Details Card
-        html.Div(
-            id='selected-claim-details-pc', 
-             className='dashboard-card details-container' 
-        ) 
+        ], style={'display': 'flex', 'flexDirection': 'row'})
     ])

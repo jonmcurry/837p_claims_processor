@@ -5,7 +5,7 @@ def create_failed_claims_layout():
     return html.Div([
         # Filters Card
         html.Div([
-            html.H4("Failed Claims Filters"),
+            html.Div(html.H4("Failed Claims Filters"), className="dashboard-card-header"),
             html.Div([
                 dcc.Dropdown(id='facility-filter-fc', placeholder='Select Facility(s)...', multi=True),
             ], className='form-element-wrapper'),
@@ -21,29 +21,35 @@ def create_failed_claims_layout():
                 ),
             ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-fc-button', n_clicks=0)
-        ], className='dashboard-card'), # Applied .dashboard-card
+        ], className='dashboard-card'),
 
-        # Data Table Card
+        # Container for the two-column layout (Table/Details + Graph)
         html.Div([
-            # Optional: html.Div(html.H4("Failed Claims Data"), className="dashboard-card-header"),
-            dash_table.DataTable(
-                id='failed-claims-table',
-                columns=[],
-                data=[],
-                # COMMON_DATATABLE_PROPS are applied in callbacks.py
-            )
-            # Optional: ], className="dashboard-card-content")
-        ], className='dashboard-card table-container'),
-        
-        # Selected Row Details Card
-        html.Div(
-            id='selected-failed-claim-details-fc', 
-            className='dashboard-card details-container' # Apply card style
-        ),
-        
-        # Graph Card for Failure Analysis
-        html.Div([
-            # The graph title is set dynamically in the callback.
-            dcc.Graph(id='failure-reason-bargraph-fc')
-        ], className='dashboard-card graph-container') 
+             # Left Column: Table and Details
+             html.Div([
+                # Data Table Card
+                html.Div([
+                    dash_table.DataTable(
+                        id='failed-claims-table',
+                        columns=[],
+                        data=[],
+                    )
+                ], className='dashboard-card table-container'),
+                
+                # Selected Row Details Card
+                html.Div(
+                    id='selected-failed-claim-details-fc', 
+                    className='dashboard-card details-container'
+                ),
+             ], style={'flex': '2', 'marginRight': '24px'}),
+
+            # Right Column: Graph
+            html.Div([
+                # Graph Card for Failure Analysis
+                html.Div([
+                    dcc.Graph(id='failure-reason-bargraph-fc')
+                ], className='dashboard-card graph-container') 
+            ], style={'flex': '1'})
+
+        ], style={'display': 'flex', 'flexDirection': 'row'})
     ])

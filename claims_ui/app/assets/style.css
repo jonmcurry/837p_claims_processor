@@ -1,164 +1,224 @@
+/* ==========================================================================
+   Global Styles & Variables
+   ========================================================================== */
+:root {
+    --primary-color: #4A90E2; /* A professional blue */
+    --secondary-color: #50E3C2; /* A soft teal for accents */
+    --text-color-dark: #2c3e50; /* Dark slate for text */
+    --text-color-light: #8492a6; /* Lighter gray for subtext */
+    --background-color: #f0f2f5; /* Light gray page background */
+    --card-background-color: #ffffff;
+    --border-color: #e2e8f0;
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --card-border-radius: 8px;
+}
+
 body {
-    font-family: Arial, sans-serif;
+    font-family: var(--font-family);
     margin: 0;
     padding: 0;
-    background-color: #f4f4f4;
+    background-color: var(--background-color);
+    color: var(--text-color-dark);
 }
 
-.app-header { /* Class for H1 title */
-    background-color: #2c3e50;
-    color: white;
-    padding: 15px 20px;
-    text-align: center;
+/* ==========================================================================
+   Header & Main Layout
+   ========================================================================== */
+.app-header {
+    background-color: var(--card-background-color);
+    color: var(--text-color-dark);
+    padding: 16px 32px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
 }
 
-.tab-container { /* Class for the main dcc.Tabs container */
-    padding: 15px;
-}
-
-.filter-section { /* Class for divs containing filters */
-    padding: 15px; /* Increased padding slightly */
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    margin-bottom: 20px; /* Increased margin */
-    background-color: #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Added subtle shadow */
-}
-
-.filter-section h4 {
-    margin-top: 0;
-    color: #333;
-    border-bottom: 1px solid #eee; /* Added separator for heading */
-    padding-bottom: 10px;
-    margin-bottom: 15px;
-}
-
-.graph-container { /* Class for divs containing dcc.Graph */
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    background-color: #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.table-container { /* Class for divs containing DataTable */
-   padding: 15px;
-   border: 1px solid #ddd;
-   border-radius: 5px;
-   margin-bottom: 20px;
-   background-color: #fff;
-   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-/* Style for KPI summary boxes in Processing Metrics */
-.kpi-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px; /* Space between KPI boxes */
-    justify-content: space-around; /* Distribute KPI boxes */
-    padding: 10px 0; /* Padding around the container */
-    margin-bottom: 15px;
-}
-
-.kpi-title { /* For H5 inside KPI divs */
-    font-size: 0.9em;
-    color: #555;
-    margin-bottom: 5px;
-    text-align: center;
-}
-.kpi-value { /* For P inside KPI divs */
-    font-size: 1.5em;
-    font-weight: bold;
-    color: #2c3e50;
-    text-align: center;
-    margin-top: 0;
-}
-
-/* General styling for Dash components if needed */
-.Select--multi .Select-value, .Select--single .Select-value {
-    display: inline-flex !important; /* Fix for multi-select text */
-}
-
-/* Ensure button has some breathing room */
-.filter-section .btn {
-    margin-top: 10px;
-}
-
-/* Ensure DatePickerRange is responsive */
-.DateInput_input, .DateInput_input_1 {
-    width: 100% !important; /* Make date inputs take full width of their container */
-    padding: 5px !important;
-    border-radius: 4px !important;
-    border: 1px solid #ccc !important;
-}
-.DateRangePickerInput { /* Container for date pickers */
-    width: 100%;
-}
-
-/* Style for Graph rows to arrange them side-by-side if needed */
-.graph-row {
-    display: flex;
-    flex-wrap: wrap; /* Allow wrapping on smaller screens */
-    gap: 20px; /* Space between graphs in a row */
-    margin-bottom: 20px;
-}
-.graph-item-half-width {
-    flex: 1 1 calc(50% - 10px); /* Each graph takes half width, minus gap */
-    min-width: 300px; /* Minimum width before wrapping */
-}
-.graph-item-full-width {
-    flex: 1 1 100%;
-}
-
-/* Style for H4 headings in sub-layouts */
-h4 {
-    color: #2c3e50; /* Dark blue-gray color */
-    border-bottom: 2px solid #3498db; /* Light blue accent line */
-    padding-bottom: 8px;
-    margin-top: 20px; /* Space above heading */
-    margin-bottom: 15px; /* Space below heading */
-}
-
-/* Style for main H1 title (already in .app-header) */
 .app-header h1 {
-    margin: 0; /* Remove default margin from H1 */
-    font-size: 1.8em;
+    margin: 0;
+    font-size: 1.6em;
+    font-weight: 600;
 }
 
-/* Tab styling */
-.tab-container .dash-tabs {
-    border-bottom: 1px solid #ddd;
-}
-.tab-container .dash-tab {
-    padding: 10px 15px;
-    border-radius: 5px 5px 0 0; /* Rounded top corners */
-    border-color: #ddd;
-    background-color: #f9f9f9;
-    color: #555;
-}
-.tab-container .dash-tab--selected {
-    border-color: #ddd;
-    border-bottom: 1px solid white; /* Creates seamless look with content area */
-    background-color: white;
-    color: #2c3e50;
-    font-weight: bold;
+.dashboard-main-content {
+    padding: 24px;
 }
 
-#main-content-area, #healthcare-analytics-content {
-    padding-top: 15px; /* Add padding to content area to separate from tabs */
+
+/* ==========================================================================
+   Tabs Styling
+   ========================================================================== */
+.tab-wrapper-bar {
+    background-color: var(--card-background-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 24px;
 }
 
-/* Style for selected claim details area */
-#selected-claim-details-pc, #selected-failed-claim-details-fc {
-    padding: 15px;
-    border: 1px solid #e0e0e0;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-    margin-top: 20px;
-    min-height: 50px; /* Minimum height so it's visible even when empty */
+.custom-styled-tabs {
+    border: none;
 }
-#selected-claim-details-pc h5, #selected-failed-claim-details-fc h5 {
-    margin-top: 0;
-    color: #2c3e50;
+
+.custom-styled-tabs .dash-tab {
+    color: var(--text-color-light);
+    background-color: transparent;
+    border: none !important;
+    padding: 16px 20px !important;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
 }
+
+.custom-styled-tabs .dash-tab:hover {
+    color: var(--text-color-dark);
+    background-color: #f8f9fa;
+}
+
+.custom-styled-tabs .dash-tab.dash-tab--selected {
+    color: var(--primary-color);
+    background-color: transparent;
+    box-shadow: inset 0 -2px 0 0 var(--primary-color);
+    font-weight: 600;
+}
+
+
+/* ==========================================================================
+   Card System
+   ========================================================================== */
+.dashboard-card {
+    background-color: var(--card-background-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-border-radius);
+    box-shadow: var(--card-shadow);
+    margin-bottom: 24px;
+    padding: 24px;
+}
+
+.dashboard-card-header {
+    margin: -24px -24px 24px -24px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dashboard-card h4 {
+    color: var(--text-color-dark);
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+/* Specific card types */
+.table-container {
+    padding: 0; /* Remove padding for tables to fit edge-to-edge */
+}
+.table-container .dash-table-container {
+    border: none;
+}
+.graph-container {
+    overflow: hidden;
+}
+.details-container {
+    word-wrap: break-word;
+}
+
+/* ==========================================================================
+   KPI Grid
+   ========================================================================== */
+.kpi-grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.kpi-card {
+    background-color: var(--card-background-color);
+    padding: 20px;
+    border-radius: var(--card-border-radius);
+    box-shadow: var(--card-shadow);
+    border: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.kpi-card h5 { /* KPI Title */
+    margin: 0 0 8px 0;
+    color: var(--text-color-light);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.kpi-card p { /* KPI Value */
+    margin: 0;
+    color: var(--text-color-dark);
+    font-size: 2.2em;
+    font-weight: 600;
+}
+
+
+/* ==========================================================================
+   Form & Filter Elements
+   ========================================================================== */
+.dashboard-card .form-element-wrapper {
+    margin-bottom: 16px;
+}
+
+.dashboard-card .DateInput_input, .dashboard-card .DateInput_input_1 {
+    font-family: var(--font-family);
+    font-size: 14px;
+}
+
+.dashboard-card .Select-control, .dashboard-card .select-control, 
+.dashboard-card .DateInput, .dashboard-card .DateInput_1 {
+    border-radius: 6px;
+    border-color: var(--border-color);
+}
+.dashboard-card .Select-control:hover, .dashboard-card .select-control:hover {
+    border-color: var(--primary-color);
+}
+
+
+.dashboard-card #apply-filters-pc-button,
+.dashboard-card #apply-filters-fc-button,
+.dashboard-card #apply-filters-pm-button,
+.dashboard-card #apply-filters-ha-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.dashboard-card #apply-filters-pc-button:hover,
+.dashboard-card #apply-filters-fc-button:hover,
+.dashboard-card #apply-filters-pm-button:hover,
+.dashboard-card #apply-filters-ha-button:hover {
+    background-color: #357ABD; /* Darker blue on hover */
+}
+
+
+/* =is========================================================================
+   Data Table
+   ========================================================================== */
+.table-container .dash-header {
+    background-color: #f8f9fa;
+    color: var(--text-color-dark);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+}
+.table-container .dash-data-table {
+    border-top-left-radius: var(--card-border-radius);
+    border-top-right-radius: var(--card-border-radius);
+}
+.table-container .dash-cell {
+    padding: 12px;
+    border-color: var(--border-color) !important;
+}
+
+.table-container tr:last-of-type .dash-cell {
+     border-bottom: none !important;
+}
+

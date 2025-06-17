@@ -5,7 +5,7 @@ def create_processing_metrics_layout():
     return html.Div([
         # Filters Card
         html.Div([
-            html.H4("Processing Metrics Filters"),
+            html.Div(html.H4("Processing Metrics Filters"), className="dashboard-card-header"),
             html.Div([
                 dcc.Dropdown(id='org-filter-pm', placeholder='Select Organization', multi=False),
             ], className='form-element-wrapper'),
@@ -24,21 +24,31 @@ def create_processing_metrics_layout():
                 ),
             ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-pm-button', n_clicks=0)
-        ], className='dashboard-card'), # Applied .dashboard-card
+        ], className='dashboard-card'),
 
         # KPIs - This div is styled by .kpi-grid-container in CSS.
         html.Div(id='kpi-summary-pm', className='kpi-grid-container'), 
         
-        # Graphs in individual cards
+        # Graphs in a two-column grid layout
         html.Div([
-            dcc.Graph(id='daily-trends-graph-pm')
-        ], className='dashboard-card graph-container'),
-        
-        html.Div([
-            dcc.Graph(id='facility-comparison-graph-pm')
-        ], className='dashboard-card graph-container'),
-        
-        html.Div([
-            dcc.Graph(id='org-region-summary-graph-pm')
-        ], className='dashboard-card graph-container')
+            # Left Column
+            html.Div([
+                html.Div([
+                    dcc.Graph(id='daily-trends-graph-pm')
+                ], className='dashboard-card graph-container'),
+                html.Div([
+                    dcc.Graph(id='payer-distribution-graph-pm')
+                ], className='dashboard-card graph-container'),
+            ], style={'flex': 1, 'marginRight': '12px'}),
+            # Right Column
+            html.Div([
+                 html.Div([
+                    dcc.Graph(id='facility-comparison-graph-pm')
+                ], className='dashboard-card graph-container'),
+                html.Div([
+                    dcc.Graph(id='claim-type-distribution-graph-pm')
+                ], className='dashboard-card graph-container'),
+            ], style={'flex': 1, 'marginLeft': '12px'}),
+
+        ], style={'display': 'flex', 'flexDirection': 'row'})
     ])
