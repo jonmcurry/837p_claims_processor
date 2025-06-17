@@ -520,7 +520,7 @@ def load_validation_rules(session, db_type: str):
             ('NPI_FORMAT', 'format_validation', '{"field": "billing_provider_npi", "pattern": "^[0-9]{10}$"}', 'NPI must be exactly 10 digits', 'error'),
             ('DATE_SEQUENCE', 'business_rule', '{"rule": "admission_date <= discharge_date"}', 'Admission date must be before or equal to discharge date', 'error'),
             ('PROCEDURE_CODE', 'reference_validation', '{"field": "procedure_code", "reference_table": "rvu_data"}', 'Procedure code must exist in RVU reference table', 'error'),
-            ('DIAGNOSIS_CODE', 'format_validation', '{"field": "primary_diagnosis_code", "pattern": "^[A-Z][0-9]{2}(\\.[0-9X]{1,2})?$"}', 'Diagnosis code must be valid ICD-10 format', 'error'),
+            ('DIAGNOSIS_CODE', 'format_validation', '{"field": "primary_diagnosis_code", "pattern": "^[A-Z][0-9]{2}(\\\\.[0-9X]{1,2})?$"}', 'Diagnosis code must be valid ICD-10 format', 'error'),
             ('CHARGE_AMOUNT', 'business_rule', '{"rule": "total_charges > 0"}', 'Total charges must be positive', 'warning'),
             ('DUPLICATE_CLAIM', 'uniqueness_check', '{"fields": ["claim_id", "facility_id"]}', 'Claim ID must be unique within facility', 'error'),
             ('PATIENT_AGE', 'business_rule', '{"rule": "age_appropriate_for_procedure"}', 'Patient age should be appropriate for procedure', 'warning')
