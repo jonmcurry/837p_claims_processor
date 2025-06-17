@@ -243,7 +243,8 @@ class DatabaseSetup:
                     continue
                     
                 # Skip filegroup creation that requires specific paths
-                if 'ADD FILEGROUP' in line or 'ADD FILE' in line or 'FILENAME =' in line:
+                if ('ADD FILEGROUP' in line or 'ADD FILE' in line or 'FILENAME =' in line or 
+                    'ALTER DATABASE smart_pro_claims' in line):
                     skip_until_go = True
                     continue
                     
