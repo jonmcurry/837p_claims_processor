@@ -311,7 +311,7 @@ CREATE TABLE dbo.claims_line_items (
     charge_amount NUMERIC(10,2) NOT NULL,
     service_from_date DATE NULL,
     service_to_date DATE NULL,
-    diagnosis_pointer VARCHAR(4) NULL,
+    diagnosis_pointer VARCHAR(10) NULL,
     place_of_service VARCHAR(2) NULL,
     revenue_code VARCHAR(4) NULL,
     created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
