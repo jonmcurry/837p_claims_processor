@@ -3,14 +3,15 @@ from dash import dcc, html, dash_table
 def create_failed_claims_layout():
     """Creates the layout for the Failed Claims Dashboard."""
     return html.Div([
+        # Filters Card
         html.Div([
             html.H4("Failed Claims Filters"),
             html.Div([
                 dcc.Dropdown(id='facility-filter-fc', placeholder='Select Facility(s)...', multi=True),
-            ], style={'marginBottom': '10px'}),
+            ], className='form-element-wrapper'),
             html.Div([
                 dcc.Dropdown(id='failure-category-filter-fc', placeholder='Select Failure Category(s)...', multi=True),
-            ], style={'marginBottom': '10px'}),
+            ], className='form-element-wrapper'),
             html.Div([
                  dcc.DatePickerRange(
                     id='date-picker-range-fc',
@@ -18,32 +19,31 @@ def create_failed_claims_layout():
                     end_date_placeholder_text='End Date',
                     display_format='YYYY-MM-DD'
                 ),
-            ], style={'marginBottom': '15px'}),
+            ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-fc-button', n_clicks=0)
-        ], className='filter-section'),
+        ], className='dashboard-card filter-section'),
 
+        # Data Table Card
         html.Div([
             dash_table.DataTable(
                 id='failed-claims-table',
                 columns=[],
                 data=[],
-                page_size=15,
-                sort_action='native',
-                filter_action='native',
-                row_selectable='single',
-                style_cell={'textAlign': 'left', 'padding': '5px', 'fontFamily': 'Arial, sans-serif', 'fontSize': '0.9em'},
-                style_header={'backgroundColor': '#ecf0f1', 'fontWeight': 'bold', 'borderBottom': '1px solid black'},
-                style_data={'whiteSpace': 'normal', 'height': 'auto', 'borderBottom': '1px solid #eee'},
-                export_format='csv',
-                fill_width=False,
+                # COMMON_DATATABLE_PROPS are applied in callbacks.py
             )
-        ], className='table-container'),
+        ], className='dashboard-card table-container'),
         
-        html.Div(id='selected-failed-claim-details-fc', className='details-container', style={'marginTop': '20px', 'padding': '10px', 'border': '1px solid #eee'}),
+        # Selected Row Details Card
+        html.Div(
+            id='selected-failed-claim-details-fc', 
+            className='dashboard-card details-container' # Apply card style
+        ),
         
-        html.Hr(),
+        html.Hr(), # Keep hr for visual separation if desired, or remove if cards are enough
+
+        # Graph Card
         html.Div([
-            #html.H4("Failure Analysis", style={'textAlign': 'center', 'marginBottom': '10px'}), # Title is in graph now
+            # html.H4("Failure Analysis", className="card-header-title"), # Title is set in graph by callback
             dcc.Graph(id='failure-reason-bargraph-fc')
-        ], className='graph-container')
+        ], className='dashboard-card graph-container')
     ])
