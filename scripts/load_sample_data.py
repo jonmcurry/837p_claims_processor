@@ -216,9 +216,9 @@ def load_env_file(env_path='config/.env'):
         # Try .env.example if .env doesn't exist
         if os.path.exists('config/.env.example'):
             env_path = 'config/.env.example'
-            print(f"⚠️  Using .env.example - copy to .env for production use")
+            print("WARNING: Using .env.example - copy to .env for production use")
         else:
-            print(f"❌ Environment file '{env_path}' not found!")
+            print(f"ERROR: Environment file '{env_path}' not found!")
             return None
     
     try:
@@ -233,7 +233,7 @@ def load_env_file(env_path='config/.env'):
                         env_vars[key.strip()] = value.strip()
         return env_vars
     except Exception as e:
-        print(f"❌ Error loading env file: {e}")
+        print(f"ERROR: Error loading env file: {e}")
         return None
 
 def build_connection_strings(env_vars):
@@ -248,7 +248,7 @@ def build_connection_strings(env_vars):
     # Override database name for staging
     if pg_db == 'claims_processor_dev':
         pg_db = 'claims_staging'
-        print(f"📝 Note: Using 'claims_staging' database instead of 'claims_processor_dev'")
+        print(f"NOTE: Using 'claims_staging' database instead of 'claims_processor_dev'")
     
     pg_conn = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
     
@@ -262,7 +262,7 @@ def build_connection_strings(env_vars):
     # Override database name for production
     if ss_db == 'claims_analytics_dev':
         ss_db = 'smart_pro_claims'
-        print(f"📝 Note: Using 'smart_pro_claims' database instead of 'claims_analytics_dev'")
+        print(f"NOTE: Using 'smart_pro_claims' database instead of 'claims_analytics_dev'")
     
     ss_conn = f"mssql+pyodbc://{ss_user}:{ss_pass}@{ss_host}:{ss_port}/{ss_db}?driver=ODBC+Driver+17+for+SQL+Server"
     
@@ -1455,7 +1455,7 @@ def main():
     if not args.pg_conn:
         env_vars = load_env_file(args.env)
         if not env_vars:
-            print("❌ Failed to load environment configuration. Exiting.")
+            print("ERROR: Failed to load environment configuration. Exiting.")
             print("   Make sure config/.env exists (copy from config/.env.example)")
             sys.exit(1)
         

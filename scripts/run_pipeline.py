@@ -122,11 +122,11 @@ async def process_claims_batch(batch_id: str, dry_run: bool = False) -> bool:
         
         # Check if processing met performance targets
         if result.throughput >= settings.target_throughput:
-            logger.info("✅ Performance target met!", 
+            logger.info("SUCCESS: Performance target met!", 
                        target=f"{settings.target_throughput} claims/sec",
                        actual=f"{result.throughput:.2f} claims/sec")
         else:
-            logger.warning("⚠️ Performance target not met", 
+            logger.warning("WARNING: Performance target not met", 
                           target=f"{settings.target_throughput} claims/sec",
                           actual=f"{result.throughput:.2f} claims/sec")
         

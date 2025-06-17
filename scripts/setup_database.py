@@ -53,9 +53,9 @@ def load_env_file(env_path='config/.env'):
         # Try .env.example if .env doesn't exist
         if os.path.exists('config/.env.example'):
             env_path = 'config/.env.example'
-            console.print(f"[yellow]⚠️  Using .env.example - copy to .env for production use[/yellow]")
+            console.print(f"[yellow]WARNING: Using .env.example - copy to .env for production use[/yellow]")
         else:
-            console.print(f"[red]❌ Environment file '{env_path}' not found![/red]")
+            console.print(f"[red]ERROR: Environment file '{env_path}' not found![/red]")
             return None
     
     try:
@@ -70,7 +70,7 @@ def load_env_file(env_path='config/.env'):
                         env_vars[key.strip()] = value.strip()
         return env_vars
     except Exception as e:
-        console.print(f"[red]❌ Error loading env file: {e}[/red]")
+        console.print(f"[red]ERROR: Error loading env file: {e}[/red]")
         return None
 
 def build_config_from_env(env_vars, postgres_only=False, sqlserver_only=False):
@@ -89,7 +89,7 @@ def build_config_from_env(env_vars, postgres_only=False, sqlserver_only=False):
         pg_db = env_vars.get('POSTGRES_DB', 'claims_processor_dev')
         if pg_db == 'claims_processor_dev':
             pg_db = 'claims_staging'
-            console.print(f"[blue]📝 Note: Using 'claims_staging' database for PostgreSQL[/blue]")
+            console.print(f"[blue]NOTE: Using 'claims_staging' database for PostgreSQL[/blue]")
         config['postgres_database'] = pg_db
     else:
         config['setup_postgres'] = False
@@ -106,7 +106,7 @@ def build_config_from_env(env_vars, postgres_only=False, sqlserver_only=False):
         ss_db = env_vars.get('SQLSERVER_DB', 'claims_analytics_dev')
         if ss_db == 'claims_analytics_dev':
             ss_db = 'smart_pro_claims'
-            console.print(f"[blue]📝 Note: Using 'smart_pro_claims' database for SQL Server[/blue]")
+            console.print(f"[blue]NOTE: Using 'smart_pro_claims' database for SQL Server[/blue]")
         config['sqlserver_database'] = ss_db
     else:
         config['setup_sqlserver'] = False
@@ -542,10 +542,10 @@ class DatabaseSetup:
                 success = False
         
         if success:
-            console.print("\n[bold green]🎉 Database setup completed successfully![/bold green]")
+            console.print("\n[bold green]SUCCESS: Database setup completed successfully![/bold green]")
             self.show_summary()
         else:
-            console.print("\n[bold red]❌ Database setup failed[/bold red]")
+            console.print("\n[bold red]ERROR: Database setup failed[/bold red]")
         
         return success
 
@@ -613,7 +613,7 @@ Examples:
     # Load environment configuration
     env_vars = load_env_file(args.env)
     if not env_vars:
-        console.print("[red]❌ Failed to load environment configuration. Exiting.[/red]")
+        console.print("[red]ERROR: Failed to load environment configuration. Exiting.[/red]")
         console.print("[yellow]   Make sure config/.env exists (copy from config/.env.example)[/yellow]")
         sys.exit(1)
     
