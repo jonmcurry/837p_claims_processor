@@ -3,10 +3,10 @@ import sqlalchemy
 
 # Configuration (Ideally, use environment variables or a config file for these)
 DB_CONFIG = {
-    "server_name": "YOUR_SERVER_NAME",  # Replace with your SQL Server instance name
+    "server_name": "localhost",  # Replace with your SQL Server instance name
     "database_name": "smart_pro_claims", # Replace with your database name
-    "username": "YOUR_USERNAME",        # Replace with your SQL Server username
-    "password": "YOUR_PASSWORD",        # Replace with your SQL Server password
+    "username": "sa",        # Replace with your SQL Server username
+    "password": "ClearToFly1",        # Replace with your SQL Server password
     "driver": "ODBC Driver 17 for SQL Server" # Ensure this driver is installed
 }
 
