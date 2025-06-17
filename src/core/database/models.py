@@ -573,7 +573,7 @@ class RVUData(Base):
 class ClaimAnalytics(Base):
     """Claims analytics model for SQL Server (partitioned)."""
     
-    __tablename__ = "claims"
+    __tablename__ = "claims_analytics"
     __bind_key__ = "sqlserver"
     
     facility_id: Mapped[str] = mapped_column(String(20), ForeignKey("facilities.facility_id"), primary_key=True)
@@ -609,7 +609,7 @@ class ClaimAnalytics(Base):
 class ClaimLineItemAnalytics(Base):
     """Claims line items analytics model for SQL Server (partitioned)."""
     
-    __tablename__ = "claims_line_items"
+    __tablename__ = "claims_line_items_analytics"
     __bind_key__ = "sqlserver"
     
     facility_id: Mapped[str] = mapped_column(String(20), primary_key=True)
@@ -665,7 +665,7 @@ class ClaimDiagnosis(Base):
 class FailedClaimAnalytics(Base):
     """Failed claims analytics model for SQL Server (partitioned)."""
     
-    __tablename__ = "failed_claims"
+    __tablename__ = "failed_claims_analytics"
     __bind_key__ = "sqlserver"
     
     claim_id: Mapped[str] = mapped_column(String(50), primary_key=True)
@@ -701,7 +701,7 @@ class FailedClaimAnalytics(Base):
 class PerformanceMetricsAnalytics(Base):
     """Performance metrics analytics model for SQL Server (partitioned)."""
     
-    __tablename__ = "performance_metrics"
+    __tablename__ = "performance_metrics_analytics"
     __bind_key__ = "sqlserver"
     
     metric_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
