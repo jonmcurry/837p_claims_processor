@@ -418,7 +418,7 @@ ALTER SYSTEM SET enable_parallel_append = on;
 ALTER SYSTEM SET max_parallel_workers_per_gather = 4;
 
 -- Security settings
-ALTER SYSTEM SET ssl = on;
+ALTER SYSTEM SET ssl = off;
 ALTER SYSTEM SET log_connections = on;
 ALTER SYSTEM SET log_disconnections = on;
 ALTER SYSTEM SET log_statement = 'mod';
