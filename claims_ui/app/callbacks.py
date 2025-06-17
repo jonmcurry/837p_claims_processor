@@ -13,8 +13,8 @@ from .layouts.healthcare_analytics_layout import create_healthcare_analytics_lay
 # --- Data Query Imports ---
 # Make sure these paths are correct for your project structure
 from .queries.claims_queries import (
-    get_processed_claims, get_failed_claims, # CORRECTED FUNCTION NAME HERE
-    get_claim_details, get_payer_options, get_facility_options, get_failure_category_options
+    get_processed_claims, get_failed_claims, # 'get_claim_details' REMOVED as it's not needed
+    get_payer_options, get_facility_options, get_failure_category_options
 )
 from .queries.metrics_queries import (
     get_kpi_data, get_daily_trends, get_facility_comparison, 
@@ -95,7 +95,7 @@ def register_callbacks(app):
         kpi_cards = [
             html.Div([
                 html.H5(kpi['name']),
-                html.P(f"{kpi['value']:,}")
+                html.P(f"{kpi.get('value', 0):,}")
             ], className='kpi-card') for kpi in kpi_data
         ]
 
@@ -155,33 +155,39 @@ def register_callbacks(app):
         [State('processed-claims-table', 'data')]
     )
     def display_claim_details(active_cell, rows):
-        """Displays details of the selected claim from the table."""
+        """
+        Displays details of the selected claim from the table's existing data,
+        without requiring a new database query.
+        """
         if not active_cell or not rows:
-            return html.Div("Select a claim to see details.")
+            return html.Div([html.H4("Claim Details"), html.P("Select a claim to see details.")])
         
-        row_id = active_cell['row_id']
-        claim_details_data = get_claim_details(row_id) # Assumes row_id is claim_id
+        # Get the data for the selected row from the existing table data
+        selected_row_data = rows[active_cell['row']]
         
-        if not claim_details_data:
-            return html.Div("Details not found for selected claim.")
+        if not selected_row_data:
+            return html.Div([html.H4("Claim Details"), html.P("Could not find details for the selected claim.")])
             
+        # Build the details layout from the row data
         details_layout = [
             html.H4("Claim Details"),
-            html.P(f"Claim ID: {claim_details_data.get('claim_id')}"),
-            html.P(f"Patient: {claim_details_data.get('patient_name')}"),
-            html.P(f"Billed Amount: ${claim_details_data.get('billed_amount'):,.2f}"),
-            html.P(f"Paid Amount: ${claim_details_data.get('paid_amount'):,.2f}"),
-            html.P(f"Payer: {claim_details_data.get('payer_name')}"),
+            html.P(f"Claim ID: {selected_row_data.get('claim_id', 'N/A')}"),
+            html.P(f"Patient Name: {selected_row_data.get('patient_name', 'N/A')}"),
+            html.P(f"Billed Amount: ${selected_row_data.get('total_billed_amount', 0):,.2f}"),
+            html.P(f"Paid Amount: ${selected_row_data.get('total_paid_amount', 0):,.2f}"),
+            html.P(f"Payer: {selected_row_data.get('payer_name', 'N/A')}"),
+            html.P(f"Status: {selected_row_data.get('claim_status', 'N/A')}"),
         ]
         return html.Div(details_layout)
 
 
     # =========================================================================
     # Failed Claims Page Callbacks
-    # =========================================================================
+    # =================================e========================================
     
-    # (Assuming similar callbacks exist for the failed claims page, they would go here)
+    # (Placeholder for failed claims callbacks - they would follow a similar pattern)
     # ...
+
 
     # =========================================================================
     # Healthcare Analytics Page Callbacks
@@ -198,7 +204,6 @@ def register_callbacks(app):
     )
     def render_analytics_content(subtab, n_clicks, start_date, end_date, facility_ids, top_n):
         """Renders the content for the selected analytics sub-tab."""
-        # This callback could be more complex, might need to trigger on button click only
         if n_clicks is None:
             return html.P("Apply filters to see analytics content.")
 
@@ -210,9 +215,7 @@ def register_callbacks(app):
             df = get_top_dx_codes(start_date, end_date, facility_ids, top_n)
             fig = px.bar(df, x='dx_code', y='count', title=f'Top {top_n} Diagnosis Codes')
             return dcc.Graph(figure=fig)
-        # ... other subtabs would have similar logic
         
         return html.P(f"Content for {subtab}")
         
     print("Callbacks registered successfully.")
-
