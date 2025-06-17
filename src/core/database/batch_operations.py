@@ -42,58 +42,109 @@ class BatchDatabaseOperations:
         try:
             async with pool_manager.get_postgres_session() as session:
                 # Optimized query that fetches claims and line items in one go
-                query = text("""
-                    SELECT 
-                        c.id as claim_id,
-                        c.claim_id as claim_reference,
-                        c.facility_id,
-                        c.patient_account_number,
-                        c.medical_record_number,
-                        c.patient_first_name,
-                        c.patient_last_name,
-                        c.patient_middle_name,
-                        c.patient_date_of_birth,
-                        c.admission_date,
-                        c.discharge_date,
-                        c.service_from_date,
-                        c.service_to_date,
-                        c.financial_class,
-                        c.total_charges,
-                        c.expected_reimbursement,
-                        c.insurance_type,
-                        c.insurance_plan_id,
-                        c.subscriber_id,
-                        c.billing_provider_npi,
-                        c.billing_provider_name,
-                        c.attending_provider_npi,
-                        c.attending_provider_name,
-                        c.primary_diagnosis_code,
-                        c.diagnosis_codes,
-                        c.batch_id,
-                        c.processing_status,
-                        c.priority,
-                        cli.line_number,
-                        cli.service_date,
-                        cli.procedure_code,
-                        cli.procedure_description,
-                        cli.units,
-                        cli.charge_amount,
-                        cli.rendering_provider_npi,
-                        cli.rendering_provider_name,
-                        cli.diagnosis_pointers,
-                        cli.modifier_codes
-                    FROM claims c
-                    LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
-                    WHERE c.processing_status = 'pending'
-                    AND (:batch_id IS NULL OR c.batch_id = :batch_id)
-                    ORDER BY c.priority DESC, c.created_at ASC
-                    LIMIT :limit_val
-                """)
-                
-                params = {
-                    'batch_id': batch_id,
-                    'limit_val': limit or self.batch_sizes['claim_fetch']
-                }
+                # Build query conditionally to avoid parameter type issues
+                if batch_id is None:
+                    query = text("""
+                        SELECT 
+                            c.id as claim_id,
+                            c.claim_id as claim_reference,
+                            c.facility_id,
+                            c.patient_account_number,
+                            c.medical_record_number,
+                            c.patient_first_name,
+                            c.patient_last_name,
+                            c.patient_middle_name,
+                            c.patient_date_of_birth,
+                            c.admission_date,
+                            c.discharge_date,
+                            c.service_from_date,
+                            c.service_to_date,
+                            c.financial_class,
+                            c.total_charges,
+                            c.expected_reimbursement,
+                            c.insurance_type,
+                            c.insurance_plan_id,
+                            c.subscriber_id,
+                            c.billing_provider_npi,
+                            c.billing_provider_name,
+                            c.attending_provider_npi,
+                            c.attending_provider_name,
+                            c.primary_diagnosis_code,
+                            c.diagnosis_codes,
+                            c.batch_id,
+                            c.processing_status,
+                            c.priority,
+                            cli.line_number,
+                            cli.service_date,
+                            cli.procedure_code,
+                            cli.procedure_description,
+                            cli.units,
+                            cli.charge_amount,
+                            cli.rendering_provider_npi,
+                            cli.rendering_provider_name,
+                            cli.diagnosis_pointers,
+                            cli.modifier_codes
+                        FROM claims c
+                        LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
+                        WHERE c.processing_status = 'pending'
+                        ORDER BY c.priority DESC, c.created_at ASC
+                        LIMIT :limit_val
+                    """)
+                    params = {
+                        'limit_val': limit or self.batch_sizes['claim_fetch']
+                    }
+                else:
+                    query = text("""
+                        SELECT 
+                            c.id as claim_id,
+                            c.claim_id as claim_reference,
+                            c.facility_id,
+                            c.patient_account_number,
+                            c.medical_record_number,
+                            c.patient_first_name,
+                            c.patient_last_name,
+                            c.patient_middle_name,
+                            c.patient_date_of_birth,
+                            c.admission_date,
+                            c.discharge_date,
+                            c.service_from_date,
+                            c.service_to_date,
+                            c.financial_class,
+                            c.total_charges,
+                            c.expected_reimbursement,
+                            c.insurance_type,
+                            c.insurance_plan_id,
+                            c.subscriber_id,
+                            c.billing_provider_npi,
+                            c.billing_provider_name,
+                            c.attending_provider_npi,
+                            c.attending_provider_name,
+                            c.primary_diagnosis_code,
+                            c.diagnosis_codes,
+                            c.batch_id,
+                            c.processing_status,
+                            c.priority,
+                            cli.line_number,
+                            cli.service_date,
+                            cli.procedure_code,
+                            cli.procedure_description,
+                            cli.units,
+                            cli.charge_amount,
+                            cli.rendering_provider_npi,
+                            cli.rendering_provider_name,
+                            cli.diagnosis_pointers,
+                            cli.modifier_codes
+                        FROM claims c
+                        LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
+                        WHERE c.processing_status = 'pending'
+                        AND c.batch_id = :batch_id
+                        ORDER BY c.priority DESC, c.created_at ASC
+                        LIMIT :limit_val
+                    """)
+                    params = {
+                        'batch_id': batch_id,
+                        'limit_val': limit or self.batch_sizes['claim_fetch']
+                    }
                 
                 result = await session.execute(query, params)
                 rows = result.fetchall()
@@ -198,6 +249,11 @@ class BatchDatabaseOperations:
         failed_inserts = 0
         
         try:
+            # Check if SQL Server session maker is available
+            if not pool_manager.sqlserver_session_maker:
+                logger.warning("SQL Server not available, skipping bulk insert")
+                return 0, len(claims_data)
+                
             async with pool_manager.get_sqlserver_session() as session:
                 # Prepare bulk insert for claims
                 claims_to_insert = []
@@ -345,8 +401,8 @@ class BatchDatabaseOperations:
                     params[processed_at_param] = update.get('processed_at', 'NOW()')
                     params[reimbursement_param] = update.get('expected_reimbursement', 0)
                     
-                    status_cases.append(f"WHEN id = :{claim_id_param} THEN :{status_param}::processing_status")
-                    processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN :{processed_at_param}::timestamp")
+                    status_cases.append(f"WHEN id = :{claim_id_param} THEN :{status_param}")
+                    processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN :{processed_at_param}")
                     reimbursement_cases.append(f"WHEN id = :{claim_id_param} THEN :{reimbursement_param}")
                 
                 query = text(f"""
@@ -433,7 +489,7 @@ class BatchDatabaseOperations:
                     SET 
                         processed_claims = :processed_claims,
                         failed_claims = :failed_claims,
-                        status = :status::processing_status,
+                        status = :status,
                         completed_at = :completed_at,
                         processing_time_seconds = :processing_time,
                         throughput_per_second = :throughput,
@@ -496,8 +552,9 @@ class BatchDatabaseOperations:
                 result = await session.execute(pg_query)
                 stats['postgres'] = {row.processing_status: row.count for row in result.fetchall()}
                 
-            # SQL Server stats
-            async with pool_manager.get_sqlserver_session() as session:
+            # SQL Server stats (if available)
+            if pool_manager.sqlserver_session_maker:
+                async with pool_manager.get_sqlserver_session() as session:
                 ss_query = text("""
                     SELECT 
                         COUNT(*) as total_claims,
@@ -506,9 +563,15 @@ class BatchDatabaseOperations:
                 """)
                 result = await session.execute(ss_query)
                 row = result.fetchone()
+                    stats['sqlserver'] = {
+                        'total_claims': row.total_claims if row else 0,
+                        'facilities': row.facilities if row else 0
+                    }
+            else:
                 stats['sqlserver'] = {
-                    'total_claims': row.total_claims if row else 0,
-                    'facilities': row.facilities if row else 0
+                    'total_claims': 0,
+                    'facilities': 0,
+                    'status': 'unavailable'
                 }
                 
         except Exception as e:
