@@ -6,7 +6,7 @@ import time
 from decimal import Decimal
 from typing import Dict, List, Optional, Set, Tuple
 
-import aioredis
+import redis.asyncio as redis
 from sqlalchemy import text
 
 from src.core.config.settings import settings
@@ -66,7 +66,7 @@ class OptimizedRVUCache:
     """High-performance RVU cache with preloading and batch operations."""
     
     def __init__(self):
-        self.redis_client: Optional[aioredis.Redis] = None
+        self.redis_client: Optional[redis.Redis] = None
         self.local_cache: Dict[str, RVUCacheData] = {}
         self.cache_hits = 0
         self.cache_misses = 0
@@ -84,7 +84,7 @@ class OptimizedRVUCache:
         
         try:
             # Connect to Redis
-            self.redis_client = aioredis.from_url(
+            self.redis_client = redis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,
