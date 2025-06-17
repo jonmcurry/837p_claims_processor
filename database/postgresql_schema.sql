@@ -245,7 +245,7 @@ CREATE TABLE failed_claims (
 
 -- Audit logging for HIPAA compliance
 CREATE TABLE audit_logs (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL,
     
     -- Action information
     action_type VARCHAR(50) NOT NULL,
@@ -280,7 +280,7 @@ CREATE TABLE audit_logs (
 
 -- Performance metrics tracking
 CREATE TABLE performance_metrics (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL,
     
     -- Metric information
     metric_type VARCHAR(50) NOT NULL,
@@ -297,7 +297,10 @@ CREATE TABLE performance_metrics (
     tags JSONB,
     
     -- Timestamp (partitioned by month for performance)
-    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    
+    -- Primary key must include partition key for partitioned tables
+    PRIMARY KEY (id, recorded_at)
 ) PARTITION BY RANGE (recorded_at);
 
 -- Create monthly partitions for audit_logs (example for 2025)

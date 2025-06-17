@@ -213,35 +213,93 @@ class DatabaseSetup:
                 console.print(f"[red]SQL Server schema file not found: {self.sqlserver_schema_path}[/red]")
                 return False
             
-            # Use sqlcmd for better SQL script execution
-            if self.config.get('sqlserver_integrated_auth'):
-                cmd = [
-                    'sqlcmd',
-                    '-S', self.config['sqlserver_host'],
-                    '-E',  # Use integrated authentication
-                    '-d', db_name,
-                    '-i', str(self.sqlserver_schema_path),
-                    '-b'  # Exit with error code on failure
-                ]
-            else:
-                cmd = [
-                    'sqlcmd',
-                    '-S', self.config['sqlserver_host'],
-                    '-U', self.config['sqlserver_user'],
-                    '-P', self.config['sqlserver_password'],
-                    '-d', db_name,
-                    '-i', str(self.sqlserver_schema_path),
-                    '-b'
-                ]
+            # Read the schema file and modify it for dynamic execution
+            schema_content = self.sqlserver_schema_path.read_text(encoding='utf-8')
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Skip the database creation section since we already created it
+            # Remove the database creation and USE statements
+            lines = schema_content.split('\n')
+            filtered_lines = []
+            skip_until_go = False
             
-            if result.returncode == 0:
-                console.print(f"[green]✓ SQL Server schema loaded successfully[/green]")
-                return True
-            else:
-                console.print(f"[red]Error loading SQL Server schema: {result.stderr}[/red]")
-                return False
+            for line in lines:
+                # Skip database creation block
+                if 'CREATE DATABASE smart_pro_claims' in line:
+                    skip_until_go = True
+                    continue
+                if skip_until_go and line.strip() == 'GO':
+                    skip_until_go = False
+                    continue
+                if skip_until_go:
+                    continue
+                    
+                # Skip USE database statement
+                if line.strip().startswith('USE smart_pro_claims'):
+                    continue
+                if line.strip() == 'GO' and len(filtered_lines) > 0 and filtered_lines[-1].strip().startswith('USE'):
+                    continue
+                    
+                # Skip filegroup creation that requires specific paths
+                if 'ADD FILEGROUP' in line or 'ADD FILE' in line or 'FILENAME =' in line:
+                    skip_until_go = True
+                    continue
+                    
+                # Skip partition scheme that depends on filegroups
+                if 'CREATE PARTITION FUNCTION' in line or 'CREATE PARTITION SCHEME' in line:
+                    skip_until_go = True
+                    continue
+                    
+                # Skip ON ClaimsDatePartitionScheme clauses
+                if 'ON ClaimsDatePartitionScheme' in line:
+                    # Replace with default placement
+                    line = line.replace('ON ClaimsDatePartitionScheme(created_at)', '')
+                    line = line.replace('ON ClaimsDatePartitionScheme(failed_at)', '')
+                    line = line.replace('ON ClaimsDatePartitionScheme(operation_timestamp)', '')
+                    line = line.replace('ON ClaimsDatePartitionScheme(access_timestamp)', '')
+                    line = line.replace('ON ClaimsDatePartitionScheme(metric_date)', '')
+                
+                filtered_lines.append(line)
+            
+            # Create a temporary schema file
+            temp_schema_path = self.project_root / "temp_sqlserver_schema.sql"
+            temp_schema_path.write_text('\n'.join(filtered_lines), encoding='utf-8')
+            
+            try:
+                # Use sqlcmd for better SQL script execution
+                if self.config.get('sqlserver_integrated_auth'):
+                    cmd = [
+                        'sqlcmd',
+                        '-S', self.config['sqlserver_host'],
+                        '-E',  # Use integrated authentication
+                        '-d', db_name,
+                        '-i', str(temp_schema_path),
+                        '-b'  # Exit with error code on failure
+                    ]
+                else:
+                    cmd = [
+                        'sqlcmd',
+                        '-S', self.config['sqlserver_host'],
+                        '-U', self.config['sqlserver_user'],
+                        '-P', self.config['sqlserver_password'],
+                        '-d', db_name,
+                        '-i', str(temp_schema_path),
+                        '-b'
+                    ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    console.print(f"[green]✓ SQL Server schema loaded successfully[/green]")
+                    return True
+                else:
+                    console.print(f"[red]Error loading SQL Server schema: {result.stderr}[/red]")
+                    console.print(f"[yellow]Command output: {result.stdout}[/yellow]")
+                    return False
+                    
+            finally:
+                # Clean up temporary file
+                if temp_schema_path.exists():
+                    temp_schema_path.unlink()
                 
         except Exception as e:
             console.print(f"[red]Error loading SQL Server schema: {e}[/red]")
