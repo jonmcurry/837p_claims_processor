@@ -1,273 +1,164 @@
-/* === General Body & App Container === */
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f0f2f5; /* Lighter, common app background */
-    color: #333;
-    line-height: 1.6;
+    background-color: #f4f4f4;
 }
 
-#react-entry-point {
-    /* If you have a root div for Dash app */
-}
-
-/* === Main Application Header === */
-.app-header {
-    background-color: #001529; /* Dark blue/charcoal - common for enterprise sidebars/headers */
+.app-header { /* Class for H1 title */
+    background-color: #2c3e50;
     color: white;
-    padding: 12px 24px;
-    text-align: left;
-    box-shadow: 0 2px 8px #f0f1f2;
-    display: flex;
-    align-items: center;
-}
-
-.app-header h1 {
-    margin: 0;
-    font-size: 1.6em;
-    font-weight: 600;
-}
-
-/* === Tab Container & Styling === */
-.tab-container {
-    padding: 0px 24px 24px 24px; /* More padding around content area */
-}
-
-/* Style Dash Tabs themselves */
-.custom-tabs-container .dash-tabs {
-    background-color: #fff;
-    border-bottom: 1px solid #d9d9d9;
-    padding: 0 20px;
-}
-
-.custom-tabs-container .dash-tab {
-    padding: 12px 20px;
-    color: #595959;
-    border: none !important; /* Override default borders */
-    border-bottom: 2px solid transparent !important; /* For selected state */
-    transition: color 0.3s, border-bottom-color 0.3s;
-}
-
-.custom-tabs-container .dash-tab:hover {
-    color: #007bff;
-}
-
-.custom-tabs-container .dash-tab--selected {
-    color: #007bff !important;
-    border-bottom: 2px solid #007bff !important;
-    font-weight: 500;
-}
-
-#main-content-area {
-    background-color: #ffffff;
-    padding: 24px;
-    border: 1px solid #d9d9d9; /* Border for content area */
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-}
-
-/* === Card-like Sections (for filters, graphs, tables) === */
-.card-section {
-    background-color: #ffffff;
-    padding: 20px;
-    border: 1px solid #e8e8e8;
-    border-radius: 4px;
-    margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.card-section h4, .card-section h5 {
-    margin-top: 0;
-    margin-bottom: 16px;
-    color: #262626; /* Darker text for titles */
-    font-size: 1.15em; /* Slightly larger */
-    font-weight: 500;
-    border-bottom: 1px solid #f0f0f0;
-    padding-bottom: 12px;
-}
-
-/* Use .filter-section, .graph-container, .table-container with .card-section if you want this style */
-.filter-section {
-    /* Extends .card-section */
-}
-.graph-container {
-    /* Extends .card-section */
-}
-.table-container {
-    /* Extends .card-section */
-}
-.details-container {
-    background-color: #f9f9f9;
-    padding: 15px;
-    border: 1px solid #e8e8e8;
-    border-radius: 4px;
-    margin-top: 15px;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
-}
-
-/* === KPI Display Styling === */
-.kpi-summary-pm {
-    display: grid; /* Use grid for better alignment */
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Responsive grid */
-    gap: 16px; /* Spacing between items */
-    padding: 0; /* Remove padding if items have their own */
-    margin-bottom: 24px;
-}
-
-.kpi-item {
-    padding: 16px;
-    background-color: #ffffff;
-    border: 1px solid #e8e8e8;
-    border-radius: 4px;
-    text-align: left; /* Align text to left for typical KPI card */
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.kpi-item .kpi-title {
-    font-size: 0.85em;
-    color: #8c8c8c; /* Lighter, secondary text color */
-    margin-bottom: 6px;
-    display: block; /* Ensure it takes full width */
-}
-
-.kpi-item .kpi-value {
-    font-size: 1.75em;
-    font-weight: 600; /* Bold value */
-    color: #262626; /* Dark primary color for value */
-}
-
-/* === Form Components (Dropdowns, DatePickers, Buttons) === */
-
-/* General wrapper for form elements to control spacing */
-.form-element-wrapper {
-    margin-bottom: 16px;
-}
-
-/* Dash Dropdowns (using .Select-control class) */
-.Select-control {
-    border-radius: 4px !important;
-    border: 1px solid #d9d9d9 !important;
-    transition: all 0.3s;
-}
-.Select-control:hover {
-    border-color: #007bff !important;
-}
-.Select--multi .Select-value {
-    background-color: #e6f7ff !important; /* Light blue for selected items */
-    border: 1px solid #91d5ff !important;
-    color: #0056b3 !important;
-    border-radius: 3px !important;
-}
-
-/* DatePicker */
-.DateInput_input, .DateInput_input__focused {
-    font-size: 0.9em;
-    padding: 6px 10px;
-    border-radius: 4px;
-    border: 1px solid #d9d9d9;
-}
-.DateRangePickerInput, .SingleDatePickerInput {
-    border-radius: 4px;
-    overflow: hidden; /* To make border-radius apply to children */
-}
-.DateRangePickerInput:hover, .SingleDatePickerInput:hover {
-   /* border: 1px solid #007bff; */ /* Handled by child input hover */
-}
-
-/* Dash Input components */
-input[type="text"],
-input[type="number"] {
-    padding: 8px 12px;
-    border: 1px solid #d9d9d9;
-    border-radius: 4px;
-    font-size: 0.9em;
-    transition: border-color 0.3s, box-shadow 0.3s;
-}
-input[type="text"]:focus,
-input[type="number"]:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 2px rgba(0,123,255,.25);
-    outline: none;
-}
-
-/* Buttons */
-button, .dash-html-components-button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 8px 18px; /* Slightly more padding */
+    padding: 15px 20px;
     text-align: center;
-    text-decoration: none;
-    display: inline-block;
-    font-size: 0.95em;
-    font-weight: 500;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s ease-in-out, box-shadow 0.2s;
 }
 
-button:hover, .dash-html-components-button:hover {
-    background-color: #0056b3;
+.tab-container { /* Class for the main dcc.Tabs container */
+    padding: 15px;
+}
+
+.filter-section { /* Class for divs containing filters */
+    padding: 15px; /* Increased padding slightly */
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 20px; /* Increased margin */
+    background-color: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Added subtle shadow */
+}
+
+.filter-section h4 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 1px solid #eee; /* Added separator for heading */
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.graph-container { /* Class for divs containing dcc.Graph */
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    background-color: #fff;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* === DataTable Styling === */
-.dash-spreadsheet-container table {
-    font-size: 0.88em; /* Slightly smaller for more data */
-    border-collapse: collapse; /* Cleaner borders */
+.table-container { /* Class for divs containing DataTable */
+   padding: 15px;
+   border: 1px solid #ddd;
+   border-radius: 5px;
+   margin-bottom: 20px;
+   background-color: #fff;
+   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.dash-spreadsheet-container th {
-    background-color: #f0f2f5 !important; /* Header background */
-    color: #262626 !important; /* Header text */
-    font-weight: 500 !important;
-    padding: 10px 8px !important;
-    border-bottom: 1px solid #d9d9d9 !important;
+/* Style for KPI summary boxes in Processing Metrics */
+.kpi-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px; /* Space between KPI boxes */
+    justify-content: space-around; /* Distribute KPI boxes */
+    padding: 10px 0; /* Padding around the container */
+    margin-bottom: 15px;
 }
 
-.dash-spreadsheet-container td {
-    padding: 8px !important;
-    border-bottom: 1px solid #f0f0f0 !important; /* Lighter row separators */
-    color: #595959;
-}
-
-/* DataTable filter input */
-.dash-filter input {
-    padding: 4px 6px;
-    border: 1px solid #d9d9d9;
-    border-radius: 3px;
+.kpi-title { /* For H5 inside KPI divs */
     font-size: 0.9em;
-}
-
-/* DataTable export button */
-.export {
-    background-color: #28a745 !important; /* Green for export */
-    color: white !important;
-    border-radius: 4px !important;
-    padding: 5px 10px !important;
-    font-size: 0.85em !important;
-    margin-bottom: 10px !important; /* Space below export button */
-}
-.export:hover {
-    background-color: #1e7e34 !important;
-}
-
-/* === Horizontal Rule === */
-hr {
-    border: 0;
-    border-top: 1px solid #e8e8e8;
-    margin-top: 24px;
-    margin-bottom: 24px;
-}
-
-/* === Utility Classes (Optional) === */
-.text-center {
+    color: #555;
+    margin-bottom: 5px;
     text-align: center;
 }
-.mb-1 { margin-bottom: 0.25rem !important; }
-.mb-2 { margin-bottom: 0.5rem !important; }
-.mb-3 { margin-bottom: 1rem !important; }
-.mt-1 { margin-top: 0.25rem !important; }
-.mt-2 { margin-top: 0.5rem !important; }
-.mt-3 { margin-top: 1rem !important; }
+.kpi-value { /* For P inside KPI divs */
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #2c3e50;
+    text-align: center;
+    margin-top: 0;
+}
+
+/* General styling for Dash components if needed */
+.Select--multi .Select-value, .Select--single .Select-value {
+    display: inline-flex !important; /* Fix for multi-select text */
+}
+
+/* Ensure button has some breathing room */
+.filter-section .btn {
+    margin-top: 10px;
+}
+
+/* Ensure DatePickerRange is responsive */
+.DateInput_input, .DateInput_input_1 {
+    width: 100% !important; /* Make date inputs take full width of their container */
+    padding: 5px !important;
+    border-radius: 4px !important;
+    border: 1px solid #ccc !important;
+}
+.DateRangePickerInput { /* Container for date pickers */
+    width: 100%;
+}
+
+/* Style for Graph rows to arrange them side-by-side if needed */
+.graph-row {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    gap: 20px; /* Space between graphs in a row */
+    margin-bottom: 20px;
+}
+.graph-item-half-width {
+    flex: 1 1 calc(50% - 10px); /* Each graph takes half width, minus gap */
+    min-width: 300px; /* Minimum width before wrapping */
+}
+.graph-item-full-width {
+    flex: 1 1 100%;
+}
+
+/* Style for H4 headings in sub-layouts */
+h4 {
+    color: #2c3e50; /* Dark blue-gray color */
+    border-bottom: 2px solid #3498db; /* Light blue accent line */
+    padding-bottom: 8px;
+    margin-top: 20px; /* Space above heading */
+    margin-bottom: 15px; /* Space below heading */
+}
+
+/* Style for main H1 title (already in .app-header) */
+.app-header h1 {
+    margin: 0; /* Remove default margin from H1 */
+    font-size: 1.8em;
+}
+
+/* Tab styling */
+.tab-container .dash-tabs {
+    border-bottom: 1px solid #ddd;
+}
+.tab-container .dash-tab {
+    padding: 10px 15px;
+    border-radius: 5px 5px 0 0; /* Rounded top corners */
+    border-color: #ddd;
+    background-color: #f9f9f9;
+    color: #555;
+}
+.tab-container .dash-tab--selected {
+    border-color: #ddd;
+    border-bottom: 1px solid white; /* Creates seamless look with content area */
+    background-color: white;
+    color: #2c3e50;
+    font-weight: bold;
+}
+
+#main-content-area, #healthcare-analytics-content {
+    padding-top: 15px; /* Add padding to content area to separate from tabs */
+}
+
+/* Style for selected claim details area */
+#selected-claim-details-pc, #selected-failed-claim-details-fc {
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+    margin-top: 20px;
+    min-height: 50px; /* Minimum height so it's visible even when empty */
+}
+#selected-claim-details-pc h5, #selected-failed-claim-details-fc h5 {
+    margin-top: 0;
+    color: #2c3e50;
+}
