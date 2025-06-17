@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -39,9 +40,9 @@ class WorkerPool:
     """Optimized worker pool for CPU and I/O intensive tasks."""
     
     def __init__(self, max_workers: int = None):
-        self.max_workers = max_workers or min(32, (asyncio.cpu_count() or 4) * 4)
+        self.max_workers = max_workers or min(32, (os.cpu_count() or 4) * 4)
         self.io_executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        self.cpu_executor = ProcessPoolExecutor(max_workers=min(16, asyncio.cpu_count() or 4))
+        self.cpu_executor = ProcessPoolExecutor(max_workers=min(16, os.cpu_count() or 4))
         self.semaphore = asyncio.Semaphore(self.max_workers)
         
     async def submit_io_task(self, func, *args, **kwargs):
@@ -448,7 +449,7 @@ class ParallelClaimsProcessor:
             status_updates.append({
                 'claim_id': claim['id'],
                 'status': 'completed',
-                'processed_at': 'NOW()',
+                'processed_at': None,  # Will use NOW() in SQL
                 'expected_reimbursement': claim.get('expected_reimbursement', 0),
             })
             

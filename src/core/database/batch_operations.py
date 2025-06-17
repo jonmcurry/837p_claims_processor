@@ -398,12 +398,15 @@ class BatchDatabaseOperations:
                     
                     params[claim_id_param] = update['claim_id']
                     params[status_param] = update.get('status', 'completed')
-                    params[processed_at_param] = update.get('processed_at', 'NOW()')
+                    params[processed_at_param] = update.get('processed_at')
                     params[reimbursement_param] = update.get('expected_reimbursement', 0)
                     
                     status_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{status_param} AS processing_status)")
-                    processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{processed_at_param} AS timestamp)")
-                    reimbursement_cases.append(f"WHEN id = :{claim_id_param} THEN :{reimbursement_param}")
+                    if update.get('processed_at') is None:
+                        processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN NOW()")
+                    else:
+                        processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{processed_at_param} AS timestamp)")
+                    reimbursement_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{reimbursement_param} AS numeric)")
                 
                 query = text(f"""
                     UPDATE claims 
