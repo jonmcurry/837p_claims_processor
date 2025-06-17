@@ -137,14 +137,14 @@ class ClaimsProcessor:
         claim_dict = {
             'claim_id': claim[1],
             'facility_id': claim[2],
-            'service_from_date': claim[10],
-            'service_to_date': claim[11],
-            'total_charges': float(claim[13]) if claim[13] else 0,
-            'primary_diagnosis_code': claim[22],
-            'billing_provider_npi': claim[18],
-            'patient_dob': claim[7],
-            'admission_date': claim[8],
-            'discharge_date': claim[9]
+            'service_from_date': claim[11],  # +1 for medical_record_number
+            'service_to_date': claim[12],    # +1 for medical_record_number
+            'total_charges': float(claim[14]) if claim[14] else 0,  # +1 for medical_record_number
+            'primary_diagnosis_code': claim[23],  # +1 for medical_record_number
+            'billing_provider_npi': claim[19],    # +1 for medical_record_number
+            'patient_dob': claim[8],         # +1 for medical_record_number
+            'admission_date': claim[9],      # +1 for medical_record_number
+            'discharge_date': claim[10]      # +1 for medical_record_number
         }
         
         # Basic validations
@@ -255,7 +255,7 @@ class ClaimsProcessor:
             pg_cursor.execute("""
                 SELECT 
                     c.id, c.claim_id, c.facility_id, c.patient_account_number,
-                    c.patient_first_name, c.patient_last_name, c.patient_middle_name,
+                    c.medical_record_number, c.patient_first_name, c.patient_last_name, c.patient_middle_name,
                     c.patient_date_of_birth, c.admission_date, c.discharge_date,
                     c.service_from_date, c.service_to_date, c.financial_class,
                     c.total_charges, c.expected_reimbursement, c.insurance_type,
@@ -409,11 +409,11 @@ class ClaimsProcessor:
             json.dumps({  # claim_data
                 'claim_id': claim_id,
                 'patient_account': claim[3],
-                'service_dates': f"{claim[10]} to {claim[11]}",
-                'total_charges': float(claim[13]) if claim[13] else 0
+                'service_dates': f"{claim[11]} to {claim[12]}",  # +1 for medical_record_number
+                'total_charges': float(claim[14]) if claim[14] else 0  # +1 for medical_record_number
             }),
-            float(claim[13]) if claim[13] else 0,  # charge_amount
-            float(claim[14]) if claim[14] else 0,  # expected_reimbursement
+            float(claim[14]) if claim[14] else 0,  # charge_amount (+1 for medical_record_number)
+            float(claim[15]) if claim[15] else 0,  # expected_reimbursement (+1 for medical_record_number)
         ))
         
         # Update claim status to failed
@@ -438,13 +438,14 @@ class ClaimsProcessor:
             raise ValueError(f"Facility {facility_id} not found in SQL Server facilities table. Cannot transfer claim.")
         
         # Extract patient name components
-        patient_first_name = claim[4] or ''
-        patient_last_name = claim[5] or ''
-        patient_middle_name = claim[6] or ''
+        medical_record_number = claim[4]  # medical_record_number
+        patient_first_name = claim[5] or ''
+        patient_last_name = claim[6] or ''
+        patient_middle_name = claim[7] or ''
         full_patient_name = f"{patient_first_name} {patient_middle_name} {patient_last_name}".strip()
         
         # Map financial class from PostgreSQL name to SQL Server ID
-        financial_class_name = claim[12]  # financial_class from PostgreSQL
+        financial_class_name = claim[13]  # financial_class from PostgreSQL (adjusted for medical_record_number)
         financial_class_id = None
         
         if financial_class_name:
@@ -493,11 +494,11 @@ class ClaimsProcessor:
         """, (
             facility_id,
             patient_account_number,
-            None,  # medical_record_number
+            medical_record_number,  # Now using actual medical_record_number
             full_patient_name,
             patient_first_name,
             patient_last_name,
-            claim[7],  # patient_date_of_birth
+            claim[8],  # patient_date_of_birth (adjusted for medical_record_number)
             'U',  # gender (Unknown)
             financial_class_id,
             None  # secondary_insurance
