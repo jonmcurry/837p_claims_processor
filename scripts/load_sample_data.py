@@ -224,6 +224,34 @@ def get_database_type(connection_string: str) -> str:
         # Default to SQL Server for backward compatibility
         return 'sqlserver'
 
+def load_organizational_hierarchy(session):
+    """Load organizations and regions for SQL Server."""
+    # Organization 1
+    session.execute(text("""
+        IF NOT EXISTS (SELECT 1 FROM dbo.facility_organization WHERE org_name = 'Regional Health System')
+            INSERT INTO dbo.facility_organization (org_name, installed_date, active)
+            VALUES ('Regional Health System', GETDATE(), 1)
+    """))
+    
+    # Get organization ID
+    org_result = session.execute(text("SELECT org_id FROM dbo.facility_organization WHERE org_name = 'Regional Health System'"))
+    org1_id = org_result.fetchone()[0]
+    
+    # Regions for Organization 1
+    session.execute(text("""
+        IF NOT EXISTS (SELECT 1 FROM dbo.facility_region WHERE region_name = 'North Region')
+            INSERT INTO dbo.facility_region (region_name, org_id, active)
+            VALUES ('North Region', :org_id, 1)
+    """), {"org_id": org1_id})
+    
+    session.execute(text("""
+        IF NOT EXISTS (SELECT 1 FROM dbo.facility_region WHERE region_name = 'South Region')
+            INSERT INTO dbo.facility_region (region_name, org_id, active)
+            VALUES ('South Region', :org_id, 1)
+    """), {"org_id": org1_id})
+    
+    session.commit()
+
 def load_facilities(session, db_type: str):
     """Load sample facilities."""
     print("Loading facilities...")
@@ -263,41 +291,54 @@ def load_facilities(session, db_type: str):
                 "zip_code": zip_code
             })
     else:
-        # SQL Server version - load into dbo.facilities with MERGE
+        # SQL Server version - load into dbo.facilities with correct schema
+        # Schema: facility_id, facility_name, installed_date, beds, city, state, updated_date, 
+        #         updated_by, region_id, fiscal_month, org_id, active
+        
+        # First, ensure we have organizations and regions
+        load_organizational_hierarchy(session)
+        
+        # Get organization and region IDs
+        org_result = session.execute(text("SELECT org_id FROM dbo.facility_organization WHERE org_name = 'Regional Health System'"))
+        org1_id = org_result.fetchone()[0]
+        
+        region_result = session.execute(text("SELECT region_id FROM dbo.facility_region WHERE region_name = 'North Region'"))
+        region1_id = region_result.fetchone()[0]
+        
+        region2_result = session.execute(text("SELECT region_id FROM dbo.facility_region WHERE region_name = 'South Region'"))
+        region2_id = region2_result.fetchone()[0]
+        
         facilities = [
-            ('FAC001', 'Springfield General Hospital', '1234567890', '11-1234567', '123 Main St', 'Springfield', 'IL', '62701'),
-            ('FAC002', 'Metropolis Regional Medical Center', '2345678901', '22-2345678', '456 Oak Ave', 'Metropolis', 'IL', '62960'),
-            ('FAC003', 'Chicago Downtown Clinic', '3456789012', '33-3456789', '789 State St', 'Chicago', 'IL', '60601'),
-            ('FAC004', 'Naperville West Campus', '4567890123', '44-4567890', '321 West St', 'Naperville', 'IL', '60540'),
-            ('FAC005', 'Evanston North Specialty Center', '5678901234', '55-5678901', '654 North Ave', 'Evanston', 'IL', '60201')
+            ('FAC001', 'Springfield General Hospital', 250, 'Springfield', 'IL', region1_id, org1_id, 1),
+            ('FAC002', 'Metropolis Regional Medical Center', 180, 'Metropolis', 'IL', region2_id, org1_id, 7), 
+            ('FAC003', 'Chicago Downtown Clinic', 0, 'Chicago', 'IL', None, org1_id, 3),
+            ('FAC004', 'Naperville West Campus', 120, 'Naperville', 'IL', None, org1_id, 6),
+            ('FAC005', 'Evanston North Specialty Center', 80, 'Evanston', 'IL', None, org1_id, 9)
         ]
         
-        for facility_id, name, npi, tax_id, addr1, city, state, zip_code in facilities:
-            # Use MERGE for SQL Server upsert
+        for facility_id, name, beds, city, state, region_id, org_id, fiscal_month in facilities:
             session.execute(text("""
-                MERGE dbo.facilities AS target
-                USING (SELECT :facility_id AS facility_id, :name AS facility_name, :npi AS npi, 
-                              :tax_id AS tax_id, :addr1 AS address_line_1, :city AS city, 
-                              :state AS state, :zip_code AS zip_code) AS source
-                ON target.facility_id = source.facility_id
-                WHEN MATCHED THEN
-                    UPDATE SET facility_name = source.facility_name, npi = source.npi,
-                               tax_id = source.tax_id, address_line_1 = source.address_line_1,
-                               city = source.city, state = source.state, zip_code = source.zip_code,
-                               updated_date = GETDATE()
-                WHEN NOT MATCHED THEN
-                    INSERT (facility_id, facility_name, npi, tax_id, address_line_1, city, state, zip_code, active, installed_date, updated_date)
-                    VALUES (source.facility_id, source.facility_name, source.npi, source.tax_id, 
-                            source.address_line_1, source.city, source.state, source.zip_code, 1, GETDATE(), GETDATE());
+                IF NOT EXISTS (SELECT 1 FROM dbo.facilities WHERE facility_id = :facility_id)
+                    INSERT INTO dbo.facilities 
+                    (facility_id, facility_name, installed_date, beds, city, state, 
+                     updated_date, region_id, fiscal_month, org_id, active)
+                    VALUES (:facility_id, :name, GETDATE(), :beds, :city, :state, 
+                            GETDATE(), :region_id, :fiscal_month, :org_id, 1)
+                ELSE
+                    UPDATE dbo.facilities 
+                    SET facility_name = :name, beds = :beds, city = :city, state = :state,
+                        updated_date = GETDATE(), region_id = :region_id, 
+                        fiscal_month = :fiscal_month, org_id = :org_id
+                    WHERE facility_id = :facility_id
             """), {
                 "facility_id": facility_id,
                 "name": name,
-                "npi": npi,
-                "tax_id": tax_id,
-                "addr1": addr1,
+                "beds": beds,
                 "city": city,
                 "state": state,
-                "zip_code": zip_code
+                "region_id": region_id,
+                "fiscal_month": fiscal_month,
+                "org_id": org_id
             })
     
     session.commit()
@@ -361,6 +402,112 @@ def load_providers(session, db_type: str):
     session.commit()
     print(">> Providers loaded successfully")
     return provider_ids
+
+def load_facility_configuration_sqlserver(session, facility_ids: List[str]):
+    """Load facility-specific configuration for SQL Server."""
+    print("Loading facility configuration...")
+    
+    # Load financial classes
+    print("Loading facility financial classes...")
+    
+    # Get payer IDs
+    payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
+    payers = {row[1].strip(): row[0] for row in payers_result.fetchall()}
+    
+    financial_classes = [
+        ('A', 'Medicare A', '1', 0.8500, 'HIGH', True, 'A01'),
+        ('B', 'Medicare B', '1', 0.8000, 'HIGH', True, 'B02'),
+        ('MA', 'Medicaid', '2', 0.6500, 'MEDIUM', False, 'C03'),
+        ('BC', 'Blue Cross', '3', 0.9000, 'HIGH', True, None),
+        ('HM', 'HMO Plan', '6', 0.8500, 'HIGH', True, None),
+        ('CO', 'Commercial Insurance', '8', 0.8700, 'HIGH', True, None),
+        ('SP', 'Self Pay', '5', 0.2000, 'LOW', False, None),
+        ('WC', 'Workers Compensation', '9', 0.9500, 'HIGH', True, None),
+        ('TR', 'Tricare', '7', 0.8200, 'HIGH', True, None),
+        ('OT', 'Other Insurance', '4', 0.7500, 'MEDIUM', False, None)
+    ]
+    
+    for facility_id in facility_ids:
+        for fc_id, fc_name, payer_code, rate, priority, auto_post, hcc in financial_classes:
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_financial_classes 
+                              WHERE facility_id = :facility_id AND financial_class_id = :fc_id)
+                    INSERT INTO dbo.facility_financial_classes 
+                    (facility_id, financial_class_id, financial_class_name, payer_id, 
+                     reimbursement_rate, processing_priority, auto_posting_enabled, 
+                     active, effective_date, HCC)
+                    VALUES (:facility_id, :fc_id, :fc_name, :payer_id, :rate, :priority, 
+                            :auto_post, 1, DATEADD(YEAR, -1, GETDATE()), :hcc)
+            """), {
+                "facility_id": facility_id,
+                "fc_id": fc_id,
+                "fc_name": fc_name,
+                "payer_id": payers[payer_code],
+                "rate": rate,
+                "priority": priority,
+                "auto_post": auto_post,
+                "hcc": hcc
+            })
+    
+    # Load place of service codes
+    print("Loading facility place of service codes...")
+    for facility_id in facility_ids:
+        for pos_code, pos_name, origin in PLACE_OF_SERVICE_CODES:
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_place_of_service 
+                              WHERE facility_id = :facility_id AND place_of_service = :pos_code)
+                    INSERT INTO dbo.facility_place_of_service 
+                    (facility_id, place_of_service, place_of_service_name, origin, active)
+                    VALUES (:facility_id, :pos_code, :pos_name, :origin, 1)
+            """), {
+                "facility_id": facility_id,
+                "pos_code": pos_code,
+                "pos_name": pos_name,
+                "origin": origin
+            })
+    
+    # Load departments
+    print("Loading facility departments...")
+    for facility_id in facility_ids:
+        for i, dept_name in enumerate(DEPARTMENTS, 1):
+            dept_code = f"DEPT{i:03d}"
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_departments 
+                              WHERE facility_id = :facility_id AND department_code = :dept_code)
+                    INSERT INTO dbo.facility_departments 
+                    (department_code, department_name, facility_id, active)
+                    VALUES (:dept_code, :dept_name, :facility_id, 1)
+            """), {
+                "dept_code": dept_code,
+                "dept_name": dept_name,
+                "facility_id": facility_id
+            })
+    
+    # Load coders
+    print("Loading facility coders...")
+    for facility_id in facility_ids:
+        # 3-5 coders per facility
+        num_coders = random.randint(3, 5)
+        for i in range(num_coders):
+            coder_id = f"COD{i+1:03d}"
+            first_name = fake.first_name()
+            last_name = fake.last_name()
+            
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_coders 
+                              WHERE facility_id = :facility_id AND coder_id = :coder_id)
+                    INSERT INTO dbo.facility_coders 
+                    (facility_id, coder_id, coder_first_name, coder_last_name, active)
+                    VALUES (:facility_id, :coder_id, :first_name, :last_name, 1)
+            """), {
+                "facility_id": facility_id,
+                "coder_id": coder_id,
+                "first_name": first_name,
+                "last_name": last_name
+            })
+    
+    session.commit()
+    print(">> Facility configuration loaded successfully")
 
 def load_validation_rules(session, db_type: str):
     """Load sample validation rules."""
@@ -890,7 +1037,11 @@ def main():
         # 4. Load validation rules (PostgreSQL only)
         load_validation_rules(session, db_type)
         
-        # 5. Load claims data (if not skipped)
+        # 5. Load facility configuration (SQL Server only)
+        if db_type == 'sqlserver':
+            load_facility_configuration_sqlserver(session, facility_ids)
+        
+        # 6. Load claims data (if not skipped)
         if not args.skip_claims:
             if db_type == 'postgresql':
                 load_claims_data(session, facility_ids, provider_ids)
@@ -909,11 +1060,19 @@ def main():
         print(f"\n>> Sample data loading completed successfully!")
         print(f"Total time: {duration}")
         print(f"\nData Summary:")
-        print(f"   - 5 Facilities")
-        print(f"   - 200 Providers")
-        print(f"   - {len(CPT_CODES)} CPT/RVU codes")
         if db_type == 'postgresql':
+            print(f"   - 5 Facilities")
+            print(f"   - 200 Providers")
+            print(f"   - {len(CPT_CODES)} CPT/RVU codes")
             print(f"   - 8 Validation rules")
+        else:
+            print(f"   - 2 Organizations")
+            print(f"   - 2 Regions")
+            print(f"   - 5 Facilities with configuration")
+            print(f"   - 200 Providers")
+            print(f"   - {len(CPT_CODES)} CPT/RVU codes")
+            print(f"   - Financial classes, departments, and coders")
+        
         if not args.skip_claims:
             if db_type == 'postgresql':
                 print(f"   - 100,000 Claims with line items")
