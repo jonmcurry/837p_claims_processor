@@ -21,7 +21,8 @@
       "Bash(./scripts/example_usage.sh:*)",
       "Bash(pip3 install:*)",
       "Bash(rg:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }
