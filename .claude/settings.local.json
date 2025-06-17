@@ -10,7 +10,8 @@
       "Bash(grep:*)",
       "Bash(python test_db_detection.py:*)",
       "Bash(python3:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git reset:*)"
     ],
     "deny": []
   }
