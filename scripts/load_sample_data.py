@@ -693,42 +693,48 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
             """
             session.execute(text(claims_sql))
         
-        # Diagnoses
+        # Diagnoses - split into chunks to avoid SQL Server 1000 row limit
         if batch_diagnoses:
-            dx_values = []
-            for dx in batch_diagnoses:
-                dx_values.append(f"('{dx['facility_id']}', '{dx['patient_account_number']}', "
-                               f"{dx['diagnosis_sequence']}, '{dx['diagnosis_code']}', "
-                               f"'{dx['diagnosis_description']}', '{dx['diagnosis_type']}', "
-                               f"'{dx['created_at']}')")
-            
-            dx_sql = f"""
-                INSERT INTO dbo.claims_diagnosis 
-                (facility_id, patient_account_number, diagnosis_sequence, diagnosis_code,
-                 diagnosis_description, diagnosis_type, created_at)
-                VALUES {', '.join(dx_values)}
-            """
-            session.execute(text(dx_sql))
+            chunk_size = 500  # Well below SQL Server's 1000 row limit
+            for i in range(0, len(batch_diagnoses), chunk_size):
+                chunk = batch_diagnoses[i:i + chunk_size]
+                dx_values = []
+                for dx in chunk:
+                    dx_values.append(f"('{dx['facility_id']}', '{dx['patient_account_number']}', "
+                                   f"{dx['diagnosis_sequence']}, '{dx['diagnosis_code']}', "
+                                   f"'{dx['diagnosis_description']}', '{dx['diagnosis_type']}', "
+                                   f"'{dx['created_at']}')")
+                
+                dx_sql = f"""
+                    INSERT INTO dbo.claims_diagnosis 
+                    (facility_id, patient_account_number, diagnosis_sequence, diagnosis_code,
+                     diagnosis_description, diagnosis_type, created_at)
+                    VALUES {', '.join(dx_values)}
+                """
+                session.execute(text(dx_sql))
         
-        # Line items
+        # Line items - split into chunks to avoid SQL Server 1000 row limit
         if batch_line_items:
-            li_values = []
-            for li in batch_line_items:
-                li_values.append(f"('{li['facility_id']}', '{li['patient_account_number']}', "
-                               f"{li['line_number']}, '{li['procedure_code']}', {li['units']}, "
-                               f"{li['charge_amount']}, '{li['service_from_date']}', '{li['service_to_date']}', "
-                               f"'{li['diagnosis_pointer']}', '{li['place_of_service']}', "
-                               f"{li['rvu_value']}, {li['reimbursement_amount']}, "
-                               f"'{li['rendering_provider_id']}', '{li['created_at']}')")
-            
-            li_sql = f"""
-                INSERT INTO dbo.claims_line_items 
-                (facility_id, patient_account_number, line_number, procedure_code, units,
-                 charge_amount, service_from_date, service_to_date, diagnosis_pointer,
-                 place_of_service, rvu_value, reimbursement_amount, rendering_provider_id, created_at)
-                VALUES {', '.join(li_values)}
-            """
-            session.execute(text(li_sql))
+            chunk_size = 500  # Well below SQL Server's 1000 row limit
+            for i in range(0, len(batch_line_items), chunk_size):
+                chunk = batch_line_items[i:i + chunk_size]
+                li_values = []
+                for li in chunk:
+                    li_values.append(f"('{li['facility_id']}', '{li['patient_account_number']}', "
+                                   f"{li['line_number']}, '{li['procedure_code']}', {li['units']}, "
+                                   f"{li['charge_amount']}, '{li['service_from_date']}', '{li['service_to_date']}', "
+                                   f"'{li['diagnosis_pointer']}', '{li['place_of_service']}', "
+                                   f"{li['rvu_value']}, {li['reimbursement_amount']}, "
+                                   f"'{li['rendering_provider_id']}', '{li['created_at']}')")
+                
+                li_sql = f"""
+                    INSERT INTO dbo.claims_line_items 
+                    (facility_id, patient_account_number, line_number, procedure_code, units,
+                     charge_amount, service_from_date, service_to_date, diagnosis_pointer,
+                     place_of_service, rvu_value, reimbursement_amount, rendering_provider_id, created_at)
+                    VALUES {', '.join(li_values)}
+                """
+                session.execute(text(li_sql))
         
         session.commit()
         
