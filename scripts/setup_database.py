@@ -151,7 +151,7 @@ class DatabaseSetup:
             console.print("[yellow]Install with: pip install psycopg2-binary pyodbc[/yellow]")
             return False
         
-        console.print("[green]✓ All dependencies available[/green]")
+        console.print("[green]All dependencies available[/green]")
         return True
 
     def postgres_database_exists(self, db_name: str) -> bool:
@@ -196,7 +196,7 @@ class DatabaseSetup:
             
             cursor.close()
             conn.close()
-            console.print(f"[green]✓ Created PostgreSQL database: {db_name}[/green]")
+            console.print(f"[green]Created PostgreSQL database: {db_name}[/green]")
             return True
             
         except Exception as e:
@@ -227,7 +227,7 @@ class DatabaseSetup:
             result = subprocess.run(cmd, env=env, capture_output=True, text=True)
             
             if result.returncode == 0:
-                console.print(f"[green]✓ PostgreSQL schema loaded successfully[/green]")
+                console.print(f"[green]PostgreSQL schema loaded successfully[/green]")
                 return True
             else:
                 console.print(f"[red]Error loading PostgreSQL schema: {result.stderr}[/red]")
@@ -275,7 +275,7 @@ class DatabaseSetup:
             
             cursor.close()
             conn.close()
-            console.print(f"[green]✓ Created SQL Server database: {db_name}[/green]")
+            console.print(f"[green]Created SQL Server database: {db_name}[/green]")
             return True
             
         except Exception as e:
@@ -385,7 +385,7 @@ class DatabaseSetup:
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 
                 if result.returncode == 0:
-                    console.print(f"[green]✓ SQL Server schema loaded successfully[/green]")
+                    console.print(f"[green]SQL Server schema loaded successfully[/green]")
                     return True
                 else:
                     console.print(f"[red]Error loading SQL Server schema: {result.stderr}[/red]")
@@ -480,7 +480,7 @@ class DatabaseSetup:
         try:
             console.print(f"[blue]Running: {' '.join(cmd)} (reads config/.env.example automatically)[/blue]")
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            console.print("[green]✓ Sample data loaded successfully[/green]")
+            console.print("[green]Sample data loaded successfully[/green]")
             return True
             
         except subprocess.CalledProcessError as e:
@@ -501,7 +501,7 @@ class DatabaseSetup:
         if self.config.get('setup_postgres'):
             table.add_row(
                 "PostgreSQL",
-                "✓ Configured",
+                "Configured",
                 f"Host: {self.config['postgres_host']}:{self.config['postgres_port']}"
             )
         
@@ -509,13 +509,13 @@ class DatabaseSetup:
             auth_type = "Integrated" if self.config.get('sqlserver_integrated_auth') else "SQL Server"
             table.add_row(
                 "SQL Server", 
-                "✓ Configured",
+                "Configured",
                 f"Host: {self.config['sqlserver_host']}, Auth: {auth_type}"
             )
         
         if self.config.get('load_sample_data', True):
             claims_count = "Configuration only" if self.config.get('skip_claims_data') else "100,000 claims"
-            table.add_row("Sample Data", "✓ Loaded", claims_count)
+            table.add_row("Sample Data", "Loaded", claims_count)
         
         console.print(table)
 

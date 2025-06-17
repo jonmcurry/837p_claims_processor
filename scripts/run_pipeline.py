@@ -210,10 +210,10 @@ Examples:
                        batch_size=settings.batch_size,
                        worker_count=settings.worker_count,
                        target_throughput=settings.target_throughput)
-            logger.info("✅ Configuration check passed")
+            logger.info("Configuration check passed")
             return 0
         except Exception as e:
-            logger.error("❌ Configuration check failed", error=str(e))
+            logger.error("Configuration check failed", error=str(e))
             return 1
     
     # Get batch ID from either positional argument or flag
@@ -237,10 +237,10 @@ Examples:
         success = asyncio.run(process_claims_batch(batch_id, args.dry_run))
         
         if success:
-            logger.info("✅ Pipeline execution completed successfully", batch_id=batch_id)
+            logger.info("Pipeline execution completed successfully", batch_id=batch_id)
             return 0
         else:
-            logger.error("❌ Pipeline execution failed", batch_id=batch_id)
+            logger.error("Pipeline execution failed", batch_id=batch_id)
             return 1
             
     except KeyboardInterrupt:
