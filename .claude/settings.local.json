@@ -20,7 +20,8 @@
       "Bash(ls:*)",
       "Bash(./scripts/example_usage.sh:*)",
       "Bash(pip3 install:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

@@ -3,7 +3,6 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import pandas as pd
 import plotly.express as px
-from datetime import date
 
 # --- Layout Imports ---
 from .layouts.processed_claims_layout import create_processed_claims_layout
@@ -23,14 +22,13 @@ def register_callbacks(app):
     # =========================================================================
 
     @app.callback(
-        [Output('page-content', 'children'),
-         Output('content-title', 'children')],
+        [Output('page-content', 'children'), Output('content-title', 'children')],
         [Input('url', 'pathname')]
     )
     def display_page(pathname):
         """Renders the correct page layout based on the URL."""
         if pathname == '/processed':
-            return create_processed_claims_layout(), "Processed Claims Drill-Down"
+            return create_processed_claims_layout(), "Processed Claims"
         elif pathname == '/failed':
             return create_failed_claims_layout(), "Failed Claims Analysis"
         elif pathname == '/analytics':
@@ -55,12 +53,9 @@ def register_callbacks(app):
     # =========================================================================
     
     @app.callback(
-        [Output('facility-filter-pc', 'options'),
-         Output('payer-filter-pc', 'options'),
-         Output('facility-filter-pm', 'options'),
-         Output('facility-filter-ha', 'options'),
-         Output('facility-filter-fc', 'options'),
-         Output('failure-category-filter-fc', 'options')],
+        [Output('facility-filter-pc', 'options'), Output('payer-filter-pc', 'options'),
+         Output('facility-filter-pm', 'options'), Output('facility-filter-ha', 'options'),
+         Output('facility-filter-fc', 'options'), Output('failure-category-filter-fc', 'options')],
         [Input('url', 'pathname')]
     )
     def populate_all_filters(pathname):
@@ -75,27 +70,23 @@ def register_callbacks(app):
     # =========================================================================
 
     @app.callback(
-        [Output('kpi-summary-pm', 'children'),
-         Output('daily-trends-graph-pm', 'figure'),
-         Output('facility-comparison-graph-pm', 'figure'),
-         Output('payer-distribution-graph-pm', 'figure'),
+        [Output('kpi-summary-pm', 'children'), Output('daily-trends-graph-pm', 'figure'),
+         Output('facility-comparison-graph-pm', 'figure'), Output('payer-distribution-graph-pm', 'figure'),
          Output('claim-type-distribution-graph-pm', 'figure')],
         [Input('url', 'pathname'),
          Input('apply-filters-pm-button', 'n_clicks')]
     )
     def update_processing_metrics(pathname, n_clicks):
-        """Updates all components on the main dashboard."""
+        """Updates all components on the main dashboard on page load or filter click."""
         if pathname != '/':
-            raise PreventUpdate # Only run for the main page
+            raise PreventUpdate
 
         kpi_data = [
-            {'name': 'Total Claims Processed', 'value': 12245},
-            {'name': 'Total Billed Amount', 'value': '3.2M'},
-            {'name': 'Acceptance Rate', 'value': '92%'},
-            {'name': 'Avg. Processing Time', 'value': '1.8d'}
+            {'name': 'Total Claims Processed', 'value': 12245}, {'name': 'Total Billed Amount', 'value': '3.2M'},
+            {'name': 'Acceptance Rate', 'value': '92%'}, {'name': 'Avg. Processing Time', 'value': '1.8d'}
         ]
         kpi_cards = [html.Div([html.H5(kpi['name']), html.P(kpi['value'])], className='kpi-card') for kpi in kpi_data]
-        trends_df = pd.DataFrame({'date': pd.to_datetime(['2023-05-01', '2023-05-02', '2023-05-03', '2023-05-04', '2023-05-05']),'claims_processed': [250, 310, 280, 350, 400]})
+        trends_df = pd.DataFrame({'date': pd.to_datetime(['2023-05-01', '2023-05-02', '2023-05-03', '2023-05-04', '2023-05-05']), 'claims_processed': [250, 310, 280, 350, 400]})
         daily_trends_fig = px.area(trends_df, x='date', y='claims_processed', title='Daily Claims Volume').update_layout(template='plotly_white')
         facility_df = pd.DataFrame({'Facility': ['Main General', 'Downtown Clinic', 'Uptown Medical'], 'Billed Amount': [1.8, 1.4, 0.95]})
         facility_comp_fig = px.bar(facility_df, x='Facility', y='Billed Amount', title='Billed Amount by Facility (Millions)', text_auto='.2s').update_layout(template='plotly_white')
@@ -103,6 +94,7 @@ def register_callbacks(app):
         payer_dist_fig = px.pie(payer_df, names='Payer', values='Claims', title='Claims by Payer', hole=0.4).update_layout(template='plotly_white')
         type_df = pd.DataFrame({'Claim Type': ['Professional', 'Institutional'], 'Count': [8500, 3745]})
         claim_type_fig = px.bar(type_df, x='Count', y='Claim Type', orientation='h', title='Claim Types', text_auto=True).update_layout(template='plotly_white')
+        
         return kpi_cards, daily_trends_fig, facility_comp_fig, payer_dist_fig, claim_type_fig
 
     # =========================================================================
@@ -110,8 +102,7 @@ def register_callbacks(app):
     # =========================================================================
 
     @app.callback(
-        [Output('processed-claims-table', 'data'),
-         Output('processed-claims-table', 'columns')],
+        [Output('processed-claims-table', 'data'), Output('processed-claims-table', 'columns')],
         [Input('url', 'pathname'),
          Input('apply-filters-pc-button', 'n_clicks')]
     )
@@ -119,26 +110,19 @@ def register_callbacks(app):
         """Loads data into the processed claims table on page load or filter click."""
         if pathname != '/processed':
             raise PreventUpdate
-
+        
         cols = ["Claim ID", "Patient Name", "Billed Amount", "Paid Amount", "Payer", "Status"]
         columns = [{"name": i, "id": i.lower().replace(" ", "_")} for i in cols]
-        
         placeholder_data = [
             {'claim_id': 'C-001', 'patient_name': 'John Smith', 'billed_amount': 550.75, 'paid_amount': 450.00, 'payer': 'Blue Shield', 'status': 'Paid'},
             {'claim_id': 'C-002', 'patient_name': 'Jane Doe', 'billed_amount': 1200.00, 'paid_amount': 950.00, 'payer': 'United Health', 'status': 'Paid'},
-            {'claim_id': 'C-003', 'patient_name': 'Peter Jones', 'billed_amount': 320.00, 'paid_amount': 280.00, 'payer': 'Aetna', 'status': 'Paid'},
         ]
         return placeholder_data, columns
     
-    @app.callback(
-        Output('selected-claim-details-pc', 'children'),
-        [Input('processed-claims-table', 'active_cell')],
-        [State('processed-claims-table', 'data')]
-    )
+    @app.callback(Output('selected-claim-details-pc', 'children'), [Input('processed-claims-table', 'active_cell')], [State('processed-claims-table', 'data')])
     def display_claim_details(active_cell, rows):
         """Displays details of the selected claim from the table's data."""
-        if not active_cell or not rows:
-            return html.Div([html.H4("Claim Details"), html.P("Select a claim to see details.")])
+        if not active_cell or not rows: return html.Div([html.H4("Claim Details"), html.P("Select a claim to see details.")])
         selected_row_data = rows[active_cell['row']]
         details_layout = [
             html.H4("Claim Details"),
@@ -154,10 +138,9 @@ def register_callbacks(app):
     # =========================================================================
     # Failed Claims Page Callbacks
     # =========================================================================
+
     @app.callback(
-        [Output('failed-claims-table', 'data'),
-         Output('failed-claims-table', 'columns'),
-         Output('failure-reason-bargraph-fc', 'figure')],
+        [Output('failed-claims-table', 'data'), Output('failed-claims-table', 'columns'), Output('failure-reason-bargraph-fc', 'figure')],
         [Input('url', 'pathname'),
          Input('apply-filters-fc-button', 'n_clicks')]
     )
@@ -167,21 +150,10 @@ def register_callbacks(app):
 
         cols = ["Claim ID", "Patient Name", "Failure Reason", "Facility"]
         columns = [{"name": i, "id": i.lower().replace(" ", "_")} for i in cols]
-        
-        placeholder_data = [
-            {'claim_id': 'C-004', 'patient_name': 'Mary Major', 'failure_reason': 'Invalid Member ID', 'facility': 'Main General Hospital'},
-            {'claim_id': 'C-005', 'patient_name': 'David Copper', 'failure_reason': 'Service Not Covered', 'facility': 'Downtown Clinic'},
-        ]
-
-        reason_df = pd.DataFrame([
-            {'Reason': 'Invalid Member ID', 'Count': 42},
-            {'Reason': 'Service Not Covered', 'Count': 25},
-            {'Reason': 'Duplicate Claim', 'Count': 15},
-        ])
+        placeholder_data = [{'claim_id': 'C-004', 'patient_name': 'Mary Major', 'failure_reason': 'Invalid Member ID', 'facility': 'Main General Hospital'}, {'claim_id': 'C-005', 'patient_name': 'David Copper', 'failure_reason': 'Service Not Covered', 'facility': 'Downtown Clinic'}]
+        reason_df = pd.DataFrame([{'Reason': 'Invalid Member ID', 'Count': 42}, {'Reason': 'Service Not Covered', 'Count': 25}, {'Reason': 'Duplicate Claim', 'Count': 15}])
         reason_fig = px.bar(reason_df, y='Reason', x='Count', title='Top Failure Reasons', orientation='h', text_auto=True).update_layout(template='plotly_white')
-
         return placeholder_data, columns, reason_fig
-
 
     # =========================================================================
     # Healthcare Analytics Page Callbacks
@@ -190,13 +162,13 @@ def register_callbacks(app):
     @app.callback(
         Output('healthcare-analytics-content', 'children'),
         [Input('url', 'pathname'),
-         Input('healthcare-analytics-subtabs', 'value'),
+         Input('healthcare-analytics-subtabs', 'value'), 
          Input('apply-filters-ha-button', 'n_clicks')]
     )
     def render_analytics_content(pathname, subtab, n_clicks):
         if pathname != '/analytics':
             raise PreventUpdate
-            
+        
         if subtab == 'subtab-cpt':
             df = pd.DataFrame({'cpt_code': ['99213', '99214', '99396', '99203', '99212'], 'count': [500, 420, 310, 250, 180]})
             fig = px.bar(df, x='cpt_code', y='count', title=f'Top 5 CPT Codes', text_auto=True).update_layout(template='plotly_white')

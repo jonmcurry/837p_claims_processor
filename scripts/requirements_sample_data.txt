@@ -1,4 +1,0 @@
-# Requirements for sample data loading script
-sqlalchemy>=2.0.0
-pyodbc>=4.0.0
-faker>=18.0.0
