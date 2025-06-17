@@ -281,7 +281,7 @@ def load_organizational_hierarchy(session):
         })
     
     session.commit()
-    print("✓ Organizational hierarchy loaded successfully")
+    print(">> Organizational hierarchy loaded successfully")
     return ['FAC001', 'FAC002', 'FAC003', 'FAC004', 'FAC005']
 
 def load_facility_financial_classes(session, facility_ids: List[str]):
@@ -326,7 +326,7 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
             })
     
     session.commit()
-    print("✓ Facility financial classes loaded successfully")
+    print(">> Facility financial classes loaded successfully")
 
 def load_facility_place_of_service(session, facility_ids: List[str]):
     """Load place of service codes for each facility."""
@@ -346,7 +346,7 @@ def load_facility_place_of_service(session, facility_ids: List[str]):
             })
     
     session.commit()
-    print("✓ Facility place of service codes loaded successfully")
+    print(">> Facility place of service codes loaded successfully")
 
 def load_facility_departments(session, facility_ids: List[str]):
     """Load departments for each facility."""
@@ -366,7 +366,7 @@ def load_facility_departments(session, facility_ids: List[str]):
             })
     
     session.commit()
-    print("✓ Facility departments loaded successfully")
+    print(">> Facility departments loaded successfully")
 
 def load_facility_coders(session, facility_ids: List[str]):
     """Load coders for each facility."""
@@ -392,7 +392,7 @@ def load_facility_coders(session, facility_ids: List[str]):
             })
     
     session.commit()
-    print("✓ Facility coders loaded successfully")
+    print(">> Facility coders loaded successfully")
 
 def load_physicians(session):
     """Load physicians/providers."""
@@ -421,7 +421,7 @@ def load_physicians(session):
         physicians.append(provider_id)
     
     session.commit()
-    print("✓ Physicians loaded successfully")
+    print(">> Physicians loaded successfully")
     return physicians
 
 def load_rvu_data(session):
@@ -489,7 +489,7 @@ def load_rvu_data(session):
         })
     
     session.commit()
-    print("✓ RVU data loaded successfully")
+    print(">> RVU data loaded successfully")
 
 def load_claims_data(session, facility_ids: List[str], physician_ids: List[str]):
     """Load 100,000 sample claims with line items and diagnoses."""
@@ -696,7 +696,7 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
         progress = ((batch_end) / total_claims) * 100
         print(f"  Progress: {progress:.1f}% ({batch_end:,}/{total_claims:,} claims)")
     
-    print("✓ Claims data loaded successfully")
+    print(">> Claims data loaded successfully")
 
 def main():
     """Main function to load all sample data."""
@@ -714,7 +714,7 @@ def main():
     
     args = parser.parse_args()
     
-    print("🚀 Starting Smart Pro Claims sample data loading...")
+    print("Starting Smart Pro Claims sample data loading...")
     print(f"Connection: {args.connection_string.split('@')[1] if '@' in args.connection_string else 'Local'}")
     
     try:
@@ -745,7 +745,7 @@ def main():
         if not args.skip_claims:
             load_claims_data(session, facility_ids, physician_ids)
         else:
-            print("⏭️  Skipping claims data loading")
+            print(">> Skipping claims data loading")
         
         # Final commit and summary
         session.commit()
@@ -754,21 +754,21 @@ def main():
         end_time = datetime.now()
         duration = end_time - start_time
         
-        print(f"\n🎉 Sample data loading completed successfully!")
-        print(f"⏱️  Total time: {duration}")
-        print(f"\n📊 Data Summary:")
-        print(f"   • 2 Organizations")
-        print(f"   • 2 Regions")
-        print(f"   • 5 Facilities")
-        print(f"   • 200 Physicians")
-        print(f"   • {len(CPT_CODES)} CPT/RVU codes")
-        print(f"   • {len(DIAGNOSIS_CODES)} Diagnosis codes")
+        print(f"\n>> Sample data loading completed successfully!")
+        print(f"Total time: {duration}")
+        print(f"\nData Summary:")
+        print(f"   - 2 Organizations")
+        print(f"   - 2 Regions")
+        print(f"   - 5 Facilities")
+        print(f"   - 200 Physicians")
+        print(f"   - {len(CPT_CODES)} CPT/RVU codes")
+        print(f"   - {len(DIAGNOSIS_CODES)} Diagnosis codes")
         if not args.skip_claims:
-            print(f"   • 100,000 Claims with line items and diagnoses")
-        print(f"\n🏥 Ready for testing and analytics!")
+            print(f"   - 100,000 Claims with line items and diagnoses")
+        print(f"\n>> Ready for testing and analytics!")
         
     except Exception as e:
-        print(f"❌ Error loading sample data: {e}")
+        print(f"Error loading sample data: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
