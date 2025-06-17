@@ -49,17 +49,25 @@ postgres_engine = create_async_engine(
 )
 
 # SQL Server engine for production database
-sqlserver_engine = create_async_engine(
-    settings.sqlserver_url,
-    echo=settings.debug,
-    pool_size=settings.sql_pool_size,
-    pool_timeout=settings.sql_pool_timeout,
-    pool_recycle=settings.connection_pool_recycle,
-    pool_pre_ping=True,
-    connect_args={
-        "timeout": settings.sql_command_timeout,
-    },
-)
+# Note: SQL Server async support requires aioodbc or similar async driver
+# For now, we'll create a placeholder or use sync operations when needed
+try:
+    sqlserver_engine = create_async_engine(
+        settings.sqlserver_url,
+        echo=settings.debug,
+        pool_size=settings.sql_pool_size,
+        pool_timeout=settings.sql_pool_timeout,
+        pool_recycle=settings.connection_pool_recycle,
+        pool_pre_ping=True,
+        connect_args={
+            "timeout": settings.sql_command_timeout,
+        },
+    )
+except Exception as e:
+    # SQL Server async driver not available, create a None placeholder
+    import logging
+    logging.warning(f"SQL Server async engine creation failed: {e}. Using PostgreSQL only.")
+    sqlserver_engine = None
 
 # Session factories
 PostgresSessionLocal = async_sessionmaker(
@@ -70,13 +78,17 @@ PostgresSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-SqlServerSessionLocal = async_sessionmaker(
-    sqlserver_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+# Create SQL Server session factory only if engine is available
+if sqlserver_engine:
+    SqlServerSessionLocal = async_sessionmaker(
+        sqlserver_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+else:
+    SqlServerSessionLocal = None
 
 
 @asynccontextmanager
@@ -96,6 +108,9 @@ async def get_postgres_session() -> AsyncGenerator[AsyncSession, None]:
 @asynccontextmanager
 async def get_sqlserver_session() -> AsyncGenerator[AsyncSession, None]:
     """Get SQL Server database session."""
+    if SqlServerSessionLocal is None:
+        raise RuntimeError("SQL Server database is not available. Check configuration and async driver support.")
+    
     async with SqlServerSessionLocal() as session:
         try:
             yield session
