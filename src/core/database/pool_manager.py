@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from src.core.config.settings import settings
+from src.core.logging import get_logger, log_error
 
-logger = logging.getLogger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "system", structured=True)
 
 
 class OptimizedPoolManager:
@@ -126,6 +128,7 @@ class OptimizedPoolManager:
             logger.info("Database pools warmed up successfully")
         except Exception as e:
             logger.warning(f"Pool warmup had some failures: {e}")
+            log_error(__name__, e, {"operation": "pool_warmup"})
             
     async def _warmup_postgres_connection(self):
         """Create and test a PostgreSQL connection."""
@@ -134,6 +137,7 @@ class OptimizedPoolManager:
                 await conn.execute(text("SELECT 1"))
         except Exception as e:
             logger.warning(f"PostgreSQL warmup connection failed: {e}")
+            log_error(__name__, e, {"operation": "postgres_warmup", "database": "postgresql"})
             
     async def _warmup_sqlserver_connection(self):
         """Create and test a SQL Server connection."""
@@ -142,6 +146,7 @@ class OptimizedPoolManager:
                 await conn.execute(text("SELECT 1"))
         except Exception as e:
             logger.warning(f"SQL Server warmup connection failed: {e}")
+            log_error(__name__, e, {"operation": "sqlserver_warmup", "database": "sqlserver"})
             
     @asynccontextmanager
     async def get_postgres_session(self) -> AsyncGenerator[AsyncSession, None]:

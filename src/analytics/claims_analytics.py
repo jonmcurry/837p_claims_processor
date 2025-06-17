@@ -26,8 +26,10 @@ from src.core.database.models import (
     RVUData,
     CoreStandardPayer,
 )
+from src.core.logging import get_logger, log_error
 
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "analytics", structured=True)
 
 
 class ClaimsAnalytics:

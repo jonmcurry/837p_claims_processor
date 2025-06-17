@@ -27,8 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.database.base import get_postgres_session
 from src.core.database.models import AuditLog
+from src.core.logging import get_logger, log_error, get_audit_logger
 
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output for security logs
+logger = get_logger(__name__, "security", structured=True)
+audit_logger = get_audit_logger()
 
 
 class SecurityLevel(str, Enum):

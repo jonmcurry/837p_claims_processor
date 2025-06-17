@@ -14,8 +14,10 @@ from aiocache.serializers import PickleSerializer
 
 from src.core.database.base import get_postgres_session, get_sqlserver_session
 from src.core.database.models import Claim, BatchMetadata, ProcessingStatus
+from src.core.logging import get_logger, log_error
 
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "claims", structured=True)
 
 
 class UltraHighPerformancePipeline:

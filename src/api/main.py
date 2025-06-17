@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from src.core.logging import get_logger, log_error
 
 # Simplified imports - commenting out missing modules
 # from src.api.endpoints import auth, claims, analytics, health
@@ -23,7 +24,8 @@ from fastapi.responses import JSONResponse
 # Import the processing pipeline directly
 from src.processing.batch_processor.pipeline import processing_pipeline
 
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "api", structured=True)
 
 # Application startup time for uptime metrics
 app_start_time = time.time()
@@ -41,6 +43,7 @@ async def lifespan(app: FastAPI):
         
     except Exception as e:
         logger.exception("Application startup failed", error=str(e))
+        log_error(__name__, e, {"operation": "startup"})
         raise
     finally:
         # Shutdown
@@ -71,12 +74,47 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    """Add processing time header."""
+    """Add processing time header and log requests."""
     start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+    
+    # Log request
+    logger.info(
+        "Incoming request",
+        method=request.method,
+        path=request.url.path,
+        client=request.client.host if request.client else None
+    )
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        
+        # Log response
+        logger.info(
+            "Request completed",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            process_time=process_time
+        )
+        
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(
+            "Request failed",
+            method=request.method,
+            path=request.url.path,
+            error=str(e),
+            process_time=process_time
+        )
+        log_error(__name__, e, {
+            "method": request.method,
+            "path": request.url.path,
+            "process_time": process_time
+        })
+        raise
 
 
 @app.exception_handler(HTTPException)
@@ -112,6 +150,13 @@ async def general_exception_handler(request: Request, exc: Exception):
         path=request.url.path,
         method=request.method,
     )
+    
+    # Log to error file
+    log_error(__name__, exc, {
+        "path": request.url.path,
+        "method": request.method,
+        "client": request.client.host if request.client else None
+    })
     
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -152,6 +197,8 @@ async def process_batch(batch_id: str):
             "throughput": result.throughput,
         }
     except Exception as e:
+        logger.error("Batch processing failed", batch_id=batch_id, error=str(e))
+        log_error(__name__, e, {"batch_id": batch_id, "operation": "process_batch"})
         raise HTTPException(status_code=500, detail=str(e))
 
 

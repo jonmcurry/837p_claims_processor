@@ -12,8 +12,10 @@ import structlog
 from src.core.config.settings import settings
 from src.core.database.models import Claim, ClaimLineItem
 from src.processing.ml_pipeline.optimized_predictor import optimized_predictor, MLPredictionResult
+from src.core.logging import get_logger, log_error
 
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "claims", structured=True)
 
 
 @dataclass

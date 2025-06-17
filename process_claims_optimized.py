@@ -37,27 +37,10 @@ from src.core.database.pool_manager import pool_manager, initialize_pools, close
 from src.core.cache.rvu_cache import rvu_cache
 from src.processing.parallel_pipeline import parallel_processor
 from src.core.database.batch_operations import batch_ops
+from src.core.logging import get_logger, log_error
 
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
-
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "claims", structured=True)
 
 
 class OptimizedClaimsProcessor:
@@ -105,6 +88,7 @@ class OptimizedClaimsProcessor:
             
         except Exception as e:
             logger.exception("Ultra high-performance processing failed", error=str(e))
+            log_error(__name__, e, {"batch_id": batch_id, "limit": limit, "stats": self.stats})
             self.stats['processing_time'] = time.time() - self.start_time
             return self.stats
         finally:
@@ -147,6 +131,7 @@ class OptimizedClaimsProcessor:
             
         except Exception as e:
             logger.warning("System status check failed", error=str(e))
+            log_error(__name__, e, {"operation": "system_status_check"})
             
     async def _show_results(self):
         """Display comprehensive processing results."""
@@ -155,7 +140,7 @@ class OptimizedClaimsProcessor:
         print("="*80)
         
         # Main statistics
-        print(f"\n🚀 Performance Results:")
+        print(f"\n  Performance Results:")
         print(f"   • Total Claims: {self.stats['total']:,}")
         print(f"   • Successfully Processed: {self.stats['processed']:,}")
         print(f"   • Failed: {self.stats['failed']:,}")
@@ -166,36 +151,36 @@ class OptimizedClaimsProcessor:
         # Target assessment
         target_throughput = 6667
         if self.stats['target_met']:
-            print(f"\n🎯 TARGET ACHIEVED! Exceeded {target_throughput:,} claims/second")
+            print(f"\n TARGET ACHIEVED! Exceeded {target_throughput:,} claims/second")
             improvement = self.stats['throughput'] - target_throughput
-            print(f"   ⚡ Performance surplus: +{improvement:.0f} claims/sec")
+            print(f"    Performance surplus: +{improvement:.0f} claims/sec")
         else:
-            print(f"\n⚠️  Target not met. Required: {target_throughput:,} claims/second")
+            print(f"\n  Target not met. Required: {target_throughput:,} claims/second")
             shortfall = target_throughput - self.stats['throughput']
-            print(f"   📈 Improvement needed: +{shortfall:.0f} claims/sec")
+            print(f"    Improvement needed: +{shortfall:.0f} claims/sec")
             
         # Stage-by-stage breakdown
         if self.stats['stage_times']:
-            print(f"\n📊 Stage Performance Breakdown:")
+            print(f"\n  Stage Performance Breakdown:")
             for stage, timing in self.stats['stage_times'].items():
                 stage_throughput = self.stats['total'] / timing if timing > 0 else 0
                 print(f"   • {stage.title()}: {timing:.2f}s ({stage_throughput:.0f} claims/sec)")
                 
         # Performance analysis for 100k claims in 15 seconds
-        print(f"\n🎯 Target Analysis (100,000 claims in 15 seconds):")
+        print(f"\n Target Analysis (100,000 claims in 15 seconds):")
         if self.stats['total'] > 0:
             extrapolated_time = (100000 / self.stats['throughput']) if self.stats['throughput'] > 0 else float('inf')
             print(f"   • Extrapolated time for 100k claims: {extrapolated_time:.1f} seconds")
             
             if extrapolated_time <= 15:
-                print(f"   ✅ CAN achieve 100k claims in 15 seconds!")
+                print(f"    CAN achieve 100k claims in 15 seconds!")
                 margin = 15 - extrapolated_time
-                print(f"   ⏱️  Time margin: {margin:.1f} seconds")
+                print(f"   ⏱  Time margin: {margin:.1f} seconds")
             else:
                 shortage = extrapolated_time - 15
-                print(f"   ❌ Would take {shortage:.1f} seconds longer than target")
+                print(f"    Would take {shortage:.1f} seconds longer than target")
                 needed_improvement = (100000 / 15) / self.stats['throughput']
-                print(f"   📈 Need {needed_improvement:.1f}x performance improvement")
+                print(f"    Need {needed_improvement:.1f}x performance improvement")
         
         # System performance
         await self._show_system_performance()
@@ -206,7 +191,7 @@ class OptimizedClaimsProcessor:
     async def _show_system_performance(self):
         """Show system-level performance metrics."""
         try:
-            print(f"\n⚙️  System Performance:")
+            print(f"\n  System Performance:")
             
             # Database pool performance
             pool_stats = pool_manager.get_pool_stats()
@@ -228,25 +213,26 @@ class OptimizedClaimsProcessor:
             
         except Exception as e:
             logger.warning("System performance display failed", error=str(e))
+            log_error(__name__, e, {"operation": "system_performance_display"})
             
     def _show_optimization_recommendations(self):
         """Provide optimization recommendations based on performance."""
-        print(f"\n💡 Optimization Recommendations:")
+        print(f"\n Optimization Recommendations:")
         
         if self.stats['throughput'] < 6667:
-            print("   📈 Performance Improvements:")
+            print("    Performance Improvements:")
             print("   • Increase database connection pool sizes")
             print("   • Add more parallel worker processes")
             print("   • Optimize RVU cache preloading")
             print("   • Consider database query optimization")
             print("   • Scale to multiple processing servers")
         else:
-            print("   ✅ Performance is optimal!")
+            print("    Performance is optimal!")
             print("   • Consider monitoring for sustained load")
             print("   • Plan for horizontal scaling as volume grows")
             
         # Resource recommendations
-        print(f"\n🖥️  Resource Recommendations:")
+        print(f"\n  Resource Recommendations:")
         print("   • CPU: High core count (16+ cores) for parallel processing")
         print("   • Memory: 32GB+ for large batch processing")
         print("   • Network: High bandwidth (10Gbps+) for database I/O")
@@ -270,6 +256,7 @@ class OptimizedClaimsProcessor:
             
         except Exception as e:
             logger.warning("Cleanup failed", error=str(e))
+            log_error(__name__, e, {"operation": "cleanup"})
 
 
 async def main():
@@ -305,15 +292,15 @@ async def main():
     
     # Display startup banner
     print("="*80)
-    print("🚀 ULTRA HIGH-PERFORMANCE CLAIMS PROCESSOR")
+    print(" ULTRA HIGH-PERFORMANCE CLAIMS PROCESSOR")
     print("   Target: 100,000 claims in 15 seconds (6,667+ claims/sec)")
     print("="*80)
     
     if args.batch_id:
-        print(f"📦 Processing Batch: {args.batch_id}")
+        print(f" Processing Batch: {args.batch_id}")
     if args.limit:
-        print(f"🔢 Claim Limit: {args.limit:,}")
-    print(f"⚙️  Environment: {args.env}")
+        print(f" Claim Limit: {args.limit:,}")
+    print(f"  Environment: {args.env}")
     print()
     
     # Initialize and run processor
@@ -327,17 +314,18 @@ async def main():
         
         # Exit with appropriate code
         if stats['target_met']:
-            print("\n🎯 SUCCESS: Performance target achieved!")
+            print("\n SUCCESS: Performance target achieved!")
             sys.exit(0)
         else:
-            print("\n⚠️  WARNING: Performance target not met")
+            print("\n  WARNING: Performance target not met")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n🛑 Processing interrupted by user")
+        print("\n Processing interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n💥 FATAL ERROR: {e}")
+        print(f"\n FATAL ERROR: {e}")
+        log_error(__name__, e, {"operation": "main", "batch_id": args.batch_id, "limit": args.limit})
         sys.exit(1)
 
 

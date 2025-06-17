@@ -21,9 +21,10 @@ from sklearn.preprocessing import StandardScaler
 
 from src.core.config import config
 from src.monitoring.metrics.comprehensive_metrics import metrics_collector
+from src.core.logging import get_logger, log_error
 
-
-logger = logging.getLogger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "system", structured=True)
 
 
 class CacheStrategy(Enum):

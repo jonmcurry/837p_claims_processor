@@ -19,8 +19,10 @@ from src.cache.redis_cache import cache_manager
 from src.core.database.models import Claim, ClaimLineItem, ProcessingStatus
 from src.core.database.base import get_postgres_session
 from sqlalchemy import text
+from src.core.logging import get_logger, log_error
 
-logger = structlog.get_logger(__name__)
+# Get structured logger with file output
+logger = get_logger(__name__, "claims", structured=True)
 
 
 class ValidationSeverity(str, Enum):
