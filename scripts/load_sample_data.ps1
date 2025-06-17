@@ -3,10 +3,12 @@
 # This script sets up the environment and runs the Python sample data loader
 #
 # Usage:
+#   SQL Server:
 #   .\scripts\load_sample_data.ps1 -ServerName "localhost" -DatabaseName "smart_pro_claims" -Username "claims_analytics_user" -Password "YourPassword"
-#
-# Or for integrated authentication:
 #   .\scripts\load_sample_data.ps1 -ServerName "localhost" -DatabaseName "smart_pro_claims" -IntegratedAuth
+#
+#   PostgreSQL:
+#   .\scripts\load_sample_data.ps1 -ServerName "localhost" -DatabaseName "claims_staging" -Username "claims_user" -Password "YourPassword" -DatabaseType "postgresql" -Port "5432"
 
 param(
     [Parameter(Mandatory=$true)]
@@ -28,7 +30,11 @@ param(
     [switch]$SkipClaims,
     
     [Parameter(Mandatory=$false)]
-    [string]$Port = "1433"
+    [string]$Port = "1433",
+    
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("sqlserver", "postgresql")]
+    [string]$DatabaseType = "sqlserver"
 )
 
 # Colors for output
@@ -94,13 +100,13 @@ function Install-Requirements {
             }
         } catch {
             Write-ColoredOutput "❌ Failed to install Python requirements" $Color.Error
-            Write-ColoredOutput "Please install manually: pip install sqlalchemy pyodbc faker" $Color.Warning
+            Write-ColoredOutput "Please install manually: pip install sqlalchemy pyodbc psycopg2-binary faker" $Color.Warning
             exit 1
         }
     } else {
         Write-ColoredOutput "❌ Requirements file not found: $requirementsFile" $Color.Error
         Write-ColoredOutput "Installing packages individually..." $Color.Warning
-        pip install sqlalchemy pyodbc faker
+        pip install sqlalchemy pyodbc psycopg2-binary faker
     }
 }
 
@@ -111,19 +117,29 @@ function Build-ConnectionString {
         [string]$User,
         [string]$Pass,
         [string]$Port,
-        [bool]$IntegratedAuth
+        [bool]$IntegratedAuth,
+        [string]$DbType
     )
     
-    $driver = "ODBC+Driver+17+for+SQL+Server"
-    
-    if ($IntegratedAuth) {
-        return "mssql+pyodbc://$Server`:$Port/$Database`?driver=$driver&trusted_connection=yes"
-    } else {
+    if ($DbType -eq "postgresql") {
         if ([string]::IsNullOrEmpty($User) -or [string]::IsNullOrEmpty($Pass)) {
-            Write-ColoredOutput "❌ Username and Password required when not using Integrated Authentication" $Color.Error
+            Write-ColoredOutput "❌ Username and Password required for PostgreSQL connections" $Color.Error
             exit 1
         }
-        return "mssql+pyodbc://$User`:$Pass@$Server`:$Port/$Database`?driver=$driver"
+        return "postgresql://$User`:$Pass@$Server`:$Port/$Database"
+    } else {
+        # SQL Server
+        $driver = "ODBC+Driver+17+for+SQL+Server"
+        
+        if ($IntegratedAuth) {
+            return "mssql+pyodbc://$Server`:$Port/$Database`?driver=$driver&trusted_connection=yes"
+        } else {
+            if ([string]::IsNullOrEmpty($User) -or [string]::IsNullOrEmpty($Pass)) {
+                Write-ColoredOutput "❌ Username and Password required when not using Integrated Authentication" $Color.Error
+                exit 1
+            }
+            return "mssql+pyodbc://$User`:$Pass@$Server`:$Port/$Database`?driver=$driver"
+        }
     }
 }
 
@@ -200,9 +216,10 @@ function Show-Summary {
     Write-ColoredOutput "  SMART PRO CLAIMS - SAMPLE DATA LOADER" $Color.Header
     Write-ColoredOutput "="*60 $Color.Header
     Write-ColoredOutput ""
+    Write-ColoredOutput "Database Type: $DatabaseType" $Color.Info
     Write-ColoredOutput "Server: $ServerName" $Color.Info
     Write-ColoredOutput "Database: $DatabaseName" $Color.Info
-    Write-ColoredOutput "Authentication: $(if ($IntegratedAuth) { 'Integrated' } else { 'SQL Server' })" $Color.Info
+    Write-ColoredOutput "Authentication: $(if ($IntegratedAuth) { 'Integrated' } else { 'Username/Password' })" $Color.Info
     Write-ColoredOutput "Skip Claims: $(if ($SkipClaims) { 'Yes' } else { 'No' })" $Color.Info
     Write-ColoredOutput ""
 }
@@ -218,7 +235,7 @@ try {
     Install-Requirements
     
     # Step 3: Build connection string
-    $connectionString = Build-ConnectionString -Server $ServerName -Database $DatabaseName -User $Username -Pass $Password -Port $Port -IntegratedAuth $IntegratedAuth
+    $connectionString = Build-ConnectionString -Server $ServerName -Database $DatabaseName -User $Username -Pass $Password -Port $Port -IntegratedAuth $IntegratedAuth -DbType $DatabaseType
     
     # Step 4: Test connection
     Test-DatabaseConnection -ConnectionString $connectionString
