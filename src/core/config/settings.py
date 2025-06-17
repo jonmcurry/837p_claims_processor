@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     target_latency_p99: int = Field(default=100)
     sla_uptime: float = Field(default=99.9)
 
+    # Notification Settings
+    smtp_host: str = Field(default="localhost")
+    smtp_port: int = Field(default=587)
+    smtp_user: Optional[str] = Field(default=None)
+    smtp_password: Optional[SecretStr] = Field(default=None)
+    alert_email: str = Field(default="ops-team@company.com")
+
     @field_validator("app_env")
     @classmethod
     def validate_environment(cls, v: str) -> str:
