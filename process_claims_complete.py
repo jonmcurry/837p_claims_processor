@@ -468,6 +468,24 @@ class ClaimsProcessor:
         
         # Insert line items using SQL Server schema
         for item in line_items:
+            # Map NPI to provider ID by looking up in physicians table
+            provider_npi = item[6]  # rendering_provider_npi
+            provider_id = None
+            
+            if provider_npi:
+                ss_cursor.execute("""
+                    SELECT rendering_provider_id 
+                    FROM dbo.physicians 
+                    WHERE npi = ?
+                """, (provider_npi,))
+                
+                provider_result = ss_cursor.fetchone()
+                if provider_result:
+                    provider_id = provider_result[0]
+                else:
+                    # Log warning but continue with null provider
+                    print(f"   WARNING: Provider NPI {provider_npi} not found in physicians table")
+            
             ss_cursor.execute("""
                 INSERT INTO dbo.claims_line_items (
                     facility_id, patient_account_number, line_number,
@@ -485,7 +503,7 @@ class ClaimsProcessor:
                 item[1],  # service_date as both from and to
                 item[1],  # service_date
                 json.dumps(item[8]) if item[8] else None,  # diagnosis_pointer
-                item[6]  # rendering_provider_npi as rendering_provider_id
+                provider_id  # mapped provider_id from physicians table
             ))
     
     def update_batch_metadata(self, cursor):
