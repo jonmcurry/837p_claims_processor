@@ -1,6 +1,12 @@
-# Loading Claims into PostgreSQL
+# Loading Claims into PostgreSQL Staging Database
 
-To load claims into PostgreSQL for the claims processing workflow, you have two options:
+**IMPORTANT:** To load claims into PostgreSQL instead of SQL Server, you MUST use a PostgreSQL connection string starting with `postgresql://` or `postgres://`.
+
+The script automatically detects the database type from the connection string:
+- `postgresql://...` → Loads into PostgreSQL `public.claims` table  
+- `mssql+pyodbc://...` → Loads into SQL Server `dbo.claims` table
+
+## Solutions to Load Claims into PostgreSQL:
 
 ## Option 1: Using the Updated PowerShell Script
 
@@ -46,9 +52,28 @@ After running the script, you should see:
 - Batch metadata in `public.batch_metadata` table
 - Message: "Claims data loaded successfully into PostgreSQL public.claims"
 
+## Why Claims Were Loading into SQL Server
+
+The issue was that the script defaults to SQL Server when it can't detect the database type. Common causes:
+
+1. **Using SQL Server connection string:** `mssql+pyodbc://...` loads into SQL Server
+2. **Using PowerShell script without -DatabaseType parameter:** Defaults to SQL Server  
+3. **Invalid connection string:** Falls back to SQL Server
+
 ## Troubleshooting
 
-If claims are still loading into SQL Server:
-1. Verify your connection string starts with `postgresql://`
-2. Check that you're not accidentally using a SQL Server connection string
-3. Confirm the script shows "Detected database type: postgresql"
+**If claims are still loading into SQL Server:**
+
+1. ✅ **Verify connection string:** Must start with `postgresql://` or `postgres://`
+2. ✅ **Check script output:** Should show "Detected database type: postgresql"
+3. ✅ **Look for this message:** ">>> CLAIMS WILL BE LOADED INTO POSTGRESQL public.claims TABLE"
+4. ✅ **Confirm success message:** "Claims data loaded successfully into PostgreSQL public.claims"
+
+**Example of correct vs incorrect:**
+```bash
+# ✅ CORRECT - Loads into PostgreSQL
+postgresql://claims_user:password@localhost:5432/claims_staging
+
+# ❌ INCORRECT - Loads into SQL Server  
+mssql+pyodbc://user:pass@localhost:1433/smart_pro_claims?driver=ODBC+Driver+17+for+SQL+Server
+```

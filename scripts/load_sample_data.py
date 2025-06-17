@@ -221,7 +221,8 @@ def get_database_type(connection_string: str) -> str:
     elif 'mssql+pyodbc://' in connection_string or 'Driver 17 for SQL Server' in connection_string:
         return 'sqlserver'
     else:
-        # Default to SQL Server for backward compatibility
+        print(f"WARNING: Unable to detect database type from connection string: {connection_string}")
+        print("Defaulting to SQL Server. For PostgreSQL, use connection string starting with 'postgresql://'")
         return 'sqlserver'
 
 def load_organizational_hierarchy(session):
@@ -1098,6 +1099,11 @@ def main():
         # Detect database type
         db_type = get_database_type(args.connection_string)
         print(f"Detected database type: {db_type}")
+        
+        if db_type == 'postgresql':
+            print(">>> CLAIMS WILL BE LOADED INTO POSTGRESQL public.claims TABLE")
+        else:
+            print(">>> CLAIMS WILL BE LOADED INTO SQL SERVER dbo.claims TABLE")
         
         # Load data in order
         start_time = datetime.now()
