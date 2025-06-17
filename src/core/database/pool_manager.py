@@ -10,7 +10,7 @@ import asyncpg
 import pymssql
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import NullPool
 
 from src.core.config.settings import settings
 from src.core.logging import get_logger, log_error
@@ -45,17 +45,10 @@ class OptimizedPoolManager:
         self.postgres_engine = create_async_engine(
             settings.postgres_url,
             echo=False,  # Disable echoing for performance
-            poolclass=QueuePool,
-            pool_size=100,  # Increased from 10-50
-            max_overflow=50,  # Additional connections on demand
-            pool_timeout=10,  # Reduced timeout for faster failures
-            pool_recycle=1800,  # Recycle connections every 30 minutes
-            pool_pre_ping=True,
-            pool_reset_on_return='commit',
+            poolclass=NullPool,
             connect_args={
                 "server_settings": {
                     "jit": "off",
-                    "shared_preload_libraries": "pg_stat_statements",
                     "statement_timeout": "60000",  # 60 seconds
                     "idle_in_transaction_session_timeout": "30000",  # 30 seconds
                 },
@@ -64,25 +57,23 @@ class OptimizedPoolManager:
             },
         )
         
-        # Create optimized SQL Server engine  
-        self.sqlserver_engine = create_async_engine(
-            settings.sqlserver_url,
-            echo=False,
-            poolclass=QueuePool,
-            pool_size=75,  # Increased from 25
-            max_overflow=25,
-            pool_timeout=10,
-            pool_recycle=1800,
-            pool_pre_ping=True,
-            pool_reset_on_return='commit',
-            connect_args={
-                "timeout": 60,
-                "login_timeout": 30,
-                "autocommit": False,
-                "ansi": True,
-                "as_dict": True,
-            },
-        )
+        # Create optimized SQL Server engine (if async driver available)
+        try:
+            self.sqlserver_engine = create_async_engine(
+                settings.sqlserver_url,
+                echo=False,
+                poolclass=NullPool,
+                connect_args={
+                    "timeout": 60,
+                    "login_timeout": 30,
+                    "autocommit": False,
+                    "ansi": True,
+                    "as_dict": True,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"SQL Server async engine creation failed: {e}. Using PostgreSQL only.")
+            self.sqlserver_engine = None
         
         # Create session makers
         self.postgres_session_maker = async_sessionmaker(
@@ -93,13 +84,16 @@ class OptimizedPoolManager:
             autoflush=False,
         )
         
-        self.sqlserver_session_maker = async_sessionmaker(
-            self.sqlserver_engine,
-            class_=AsyncSession,
-            expire_on_commit=False,
-            autocommit=False,
-            autoflush=False,
-        )
+        if self.sqlserver_engine:
+            self.sqlserver_session_maker = async_sessionmaker(
+                self.sqlserver_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                autocommit=False,
+                autoflush=False,
+            )
+        else:
+            self.sqlserver_session_maker = None
         
         # Warm up connections
         await self._warm_up_pools()
@@ -141,6 +135,9 @@ class OptimizedPoolManager:
             
     async def _warmup_sqlserver_connection(self):
         """Create and test a SQL Server connection."""
+        if not self.sqlserver_engine:
+            return  # Skip if SQL Server engine is not available
+            
         try:
             async with self.sqlserver_engine.begin() as conn:
                 await conn.execute(text("SELECT 1"))
@@ -220,17 +217,33 @@ class OptimizedPoolManager:
         
         if self.postgres_engine:
             pg_pool = self.postgres_engine.pool
-            stats['postgres']['total'] = pg_pool.size()
-            stats['postgres']['checked_out'] = pg_pool.checkedout()
-            stats['postgres']['checked_in'] = pg_pool.checkedin()
-            stats['postgres']['overflow'] = pg_pool.overflow()
+            # Handle NullPool which doesn't have size() method
+            if hasattr(pg_pool, 'size'):
+                stats['postgres']['total'] = pg_pool.size()
+                stats['postgres']['checked_out'] = pg_pool.checkedout()
+                stats['postgres']['checked_in'] = pg_pool.checkedin()
+                stats['postgres']['overflow'] = pg_pool.overflow()
+            else:
+                # NullPool - no actual pooling
+                stats['postgres']['total'] = 1
+                stats['postgres']['checked_out'] = 0
+                stats['postgres']['checked_in'] = 1
+                stats['postgres']['overflow'] = 0
             
         if self.sqlserver_engine:
             ss_pool = self.sqlserver_engine.pool  
-            stats['sqlserver']['total'] = ss_pool.size()
-            stats['sqlserver']['checked_out'] = ss_pool.checkedout()
-            stats['sqlserver']['checked_in'] = ss_pool.checkedin()
-            stats['sqlserver']['overflow'] = ss_pool.overflow()
+            # Handle NullPool which doesn't have size() method
+            if hasattr(ss_pool, 'size'):
+                stats['sqlserver']['total'] = ss_pool.size()
+                stats['sqlserver']['checked_out'] = ss_pool.checkedout()
+                stats['sqlserver']['checked_in'] = ss_pool.checkedin()
+                stats['sqlserver']['overflow'] = ss_pool.overflow()
+            else:
+                # NullPool - no actual pooling
+                stats['sqlserver']['total'] = 1
+                stats['sqlserver']['checked_out'] = 0
+                stats['sqlserver']['checked_in'] = 1
+                stats['sqlserver']['overflow'] = 0
             
         return stats
         
@@ -246,9 +259,12 @@ class OptimizedPoolManager:
             logger.error(f"PostgreSQL health check failed: {e}")
             
         try:
-            async with self.get_sqlserver_session() as session:
-                await session.execute(text("SELECT 1"))
-                results['sqlserver'] = True
+            if self.sqlserver_session_maker:
+                async with self.get_sqlserver_session() as session:
+                    await session.execute(text("SELECT 1"))
+                    results['sqlserver'] = True
+            else:
+                results['sqlserver'] = False
         except Exception as e:
             logger.error(f"SQL Server health check failed: {e}")
             

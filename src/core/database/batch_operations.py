@@ -401,8 +401,8 @@ class BatchDatabaseOperations:
                     params[processed_at_param] = update.get('processed_at', 'NOW()')
                     params[reimbursement_param] = update.get('expected_reimbursement', 0)
                     
-                    status_cases.append(f"WHEN id = :{claim_id_param} THEN :{status_param}")
-                    processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN :{processed_at_param}")
+                    status_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{status_param} AS processing_status)")
+                    processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{processed_at_param} AS timestamp)")
                     reimbursement_cases.append(f"WHEN id = :{claim_id_param} THEN :{reimbursement_param}")
                 
                 query = text(f"""
@@ -489,7 +489,7 @@ class BatchDatabaseOperations:
                     SET 
                         processed_claims = :processed_claims,
                         failed_claims = :failed_claims,
-                        status = :status,
+                        status = CAST(:status AS processing_status),
                         completed_at = :completed_at,
                         processing_time_seconds = :processing_time,
                         throughput_per_second = :throughput,
