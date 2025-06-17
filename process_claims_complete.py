@@ -357,8 +357,12 @@ class ClaimsProcessor:
             # Record processing metrics
             self.record_processing_metrics(pg_cursor)
             
+            # Update daily processing summary in SQL Server
+            self.update_daily_processing_summary(ss_cursor)
+            
             # Final commit
             pg_conn.commit()
+            ss_conn.commit()
             
             # Show results
             self.show_results(pg_cursor, ss_cursor)
@@ -593,6 +597,81 @@ class ClaimsProcessor:
             self.stats['processing_time'],
             throughput
         ))
+    
+    def update_daily_processing_summary(self, ss_cursor):
+        """Update daily processing summary in SQL Server."""
+        from datetime import date
+        
+        # Get comprehensive facility-level stats from processed claims and line items
+        ss_cursor.execute("""
+            SELECT 
+                c.facility_id,
+                COUNT(DISTINCT c.patient_account_number) as total_claims,
+                COUNT(DISTINCT c.patient_account_number) as processed_claims,  -- All inserted claims are processed
+                0 as failed_claims,  -- Failed claims are tracked in failed_claims table
+                COUNT(li.line_number) as total_line_items,
+                SUM(li.charge_amount) as total_charge_amount,
+                SUM(li.reimbursement_amount) as total_reimbursement_amount,
+                AVG(li.reimbursement_amount / NULLIF(li.charge_amount, 0)) as avg_reimbursement_rate
+            FROM dbo.claims c
+            LEFT JOIN dbo.claims_line_items li ON c.facility_id = li.facility_id 
+                AND c.patient_account_number = li.patient_account_number
+            WHERE CAST(c.created_at AS DATE) = CAST(GETDATE() AS DATE)
+            GROUP BY c.facility_id
+        """)
+        
+        facility_stats = ss_cursor.fetchall()
+        today = date.today()
+        processing_time = self.stats.get('processing_time', 0)
+        
+        for stats in facility_stats:
+            facility_id = stats[0]
+            total_claims = stats[1]
+            processed_claims = stats[2] 
+            failed_claims = stats[3]
+            total_line_items = stats[4]
+            total_charge_amount = float(stats[5]) if stats[5] else 0
+            total_reimbursement_amount = float(stats[6]) if stats[6] else 0
+            avg_reimbursement_rate = float(stats[7]) if stats[7] else 0
+            
+            # Calculate processing metrics
+            error_rate = (failed_claims / total_claims * 100) if total_claims > 0 else 0
+            throughput = total_claims / (processing_time / 3600) if processing_time > 0 else 0  # claims per hour
+            
+            # Insert or update daily summary
+            ss_cursor.execute("""
+                MERGE dbo.daily_processing_summary AS target
+                USING (VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)) AS source 
+                    (summary_date, facility_id, total_claims_processed, total_claims_failed, 
+                     total_line_items, total_charge_amount, total_reimbursement_amount,
+                     average_reimbursement_rate, throughput_claims_per_hour, error_rate_percentage, created_at)
+                ON target.summary_date = source.summary_date AND target.facility_id = source.facility_id
+                WHEN MATCHED THEN
+                    UPDATE SET 
+                        total_claims_processed = source.total_claims_processed,
+                        total_claims_failed = source.total_claims_failed,
+                        total_line_items = source.total_line_items,
+                        total_charge_amount = source.total_charge_amount,
+                        total_reimbursement_amount = source.total_reimbursement_amount,
+                        average_reimbursement_rate = source.average_reimbursement_rate,
+                        throughput_claims_per_hour = source.throughput_claims_per_hour,
+                        error_rate_percentage = source.error_rate_percentage,
+                        created_at = source.created_at
+                WHEN NOT MATCHED THEN
+                    INSERT (summary_date, facility_id, total_claims_processed, total_claims_failed,
+                           total_line_items, total_charge_amount, total_reimbursement_amount,
+                           average_reimbursement_rate, throughput_claims_per_hour, 
+                           error_rate_percentage, created_at)
+                    VALUES (source.summary_date, source.facility_id, source.total_claims_processed,
+                           source.total_claims_failed, source.total_line_items, 
+                           source.total_charge_amount, source.total_reimbursement_amount,
+                           source.average_reimbursement_rate, source.throughput_claims_per_hour,
+                           source.error_rate_percentage, source.created_at);
+            """, (
+                today, facility_id, total_claims, failed_claims, 
+                total_line_items, total_charge_amount, total_reimbursement_amount,
+                avg_reimbursement_rate, throughput, error_rate, datetime.now()
+            ))
     
     def show_results(self, pg_cursor, ss_cursor):
         """Display processing results."""
