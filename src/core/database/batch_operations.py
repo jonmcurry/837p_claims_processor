@@ -555,14 +555,14 @@ class BatchDatabaseOperations:
             # SQL Server stats (if available)
             if pool_manager.sqlserver_session_maker:
                 async with pool_manager.get_sqlserver_session() as session:
-                ss_query = text("""
-                    SELECT 
-                        COUNT(*) as total_claims,
-                        COUNT(DISTINCT facility_id) as facilities
-                    FROM dbo.claims
-                """)
-                result = await session.execute(ss_query)
-                row = result.fetchone()
+                    ss_query = text("""
+                        SELECT 
+                            COUNT(*) as total_claims,
+                            COUNT(DISTINCT facility_id) as facilities
+                        FROM dbo.claims
+                    """)
+                    result = await session.execute(ss_query)
+                    row = result.fetchone()
                     stats['sqlserver'] = {
                         'total_claims': row.total_claims if row else 0,
                         'facilities': row.facilities if row else 0
