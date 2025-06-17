@@ -1,344 +1,187 @@
-# Contains SQL queries related to claims data
 import pandas as pd
-from claims_ui.app.db_connector import get_sqlserver_engine # Assuming db_connector is in the same app directory
+from claims_ui.app.db_connector import get_sqlserver_engine
+
+# --- Query Functions ---
+
+def get_distinct_facilities():
+    """Fetches distinct facilities for filter dropdowns."""
+    query = "SELECT facility_id, facility_name FROM dbo.facilities WHERE active = 1 ORDER BY facility_name;"
+    engine = get_sqlserver_engine()
+    if not engine:
+        return []
+    try:
+        df = pd.read_sql_query(query, engine)
+        return [{'label': row['facility_name'], 'value': row['facility_id']} for index, row in df.iterrows()]
+    except Exception as e:
+        print(f"Error fetching distinct facilities: {e}")
+        return []
+
+def get_distinct_payers():
+    """Fetches distinct payers for filter dropdowns."""
+    query = "SELECT payer_id, payer_name FROM dbo.core_standard_payers WHERE active = 1 ORDER BY payer_name;"
+    engine = get_sqlserver_engine()
+    if not engine:
+        return []
+    try:
+        df = pd.read_sql_query(query, engine)
+        return [{'label': row['payer_name'], 'value': row['payer_id']} for index, row in df.iterrows()]
+    except Exception as e:
+        print(f"Error fetching distinct payers: {e}")
+        return []
+
+def get_distinct_failure_categories():
+    """Fetches distinct failure categories for filter dropdowns."""
+    query = "SELECT DISTINCT failure_category FROM dbo.failed_claims WHERE failure_category IS NOT NULL ORDER BY failure_category;"
+    engine = get_sqlserver_engine()
+    if not engine:
+        return []
+    try:
+        df = pd.read_sql_query(query, engine)
+        return [{'label': cat, 'value': cat} for cat in df['failure_category'].unique() if cat]
+    except Exception as e:
+        print(f"Error fetching distinct failure categories: {e}")
+        return []
 
 def get_processed_claims(facility_id=None, payer_id=None, start_date=None, end_date=None, limit=100):
-    """
-    Retrieves processed claims data by joining various related tables.
-    Filters can be applied for facility, payer, date range, and a limit can be set.
-    Pulls the primary diagnosis based on diagnosis_sequence = 1.
-    """
+    """Fetches processed claims data with filters."""
     engine = get_sqlserver_engine()
-    if engine is None:
-        print("Database engine not available. Cannot fetch processed claims.")
+    if not engine:
         return pd.DataFrame()
 
-    query_parts = [
-        "SELECT",
-        # Add TOP clause if limit is specified and is a positive integer
-        f"TOP {int(limit)}" if limit and isinstance(limit, (int, float)) and limit > 0 else "",
-        """
-        c.patient_account_number, c.medical_record_number, c.patient_name, c.date_of_birth, c.gender, c.created_at AS claim_date,
-        cli.line_number, cli.procedure_code, cli.modifier1, cli.units, cli.charge_amount, cli.service_from_date, cli.rvu_value, cli.reimbursement_amount,
-        cd.diagnosis_code AS primary_diagnosis_code, cd.diagnosis_description AS primary_diagnosis_description,
+    # Ensure limit is an integer and positive, default to a high number if not for TOP clause
+    effective_limit = limit if isinstance(limit, int) and limit > 0 else 100000
+
+    base_query = f"""
+    SELECT TOP ({effective_limit})
+        c.facility_id,
+        c.patient_account_number, c.medical_record_number, c.patient_name, 
+        c.date_of_birth, c.gender, c.created_at AS claim_date,
+        cli.line_number, cli.procedure_code, cli.modifier1, cli.units, 
+        cli.charge_amount, cli.service_from_date, cli.rvu_value, cli.reimbursement_amount,
+        cd.diagnosis_code AS primary_diagnosis_code, 
+        cd.diagnosis_description AS primary_diagnosis_description,
         p.first_name AS provider_first_name, p.last_name AS provider_last_name,
         csp.payer_name
-        FROM dbo.claims c
-        JOIN dbo.claims_line_items cli ON c.facility_id = cli.facility_id AND c.patient_account_number = cli.patient_account_number
-        -- Join for primary diagnosis (diagnosis_sequence = 1)
-        LEFT JOIN dbo.claims_diagnosis cd ON c.facility_id = cd.facility_id AND c.patient_account_number = cd.patient_account_number AND cd.diagnosis_sequence = 1
-        LEFT JOIN dbo.physicians p ON cli.rendering_provider_id = p.rendering_provider_id
-        JOIN dbo.facility_financial_classes ffc ON c.facility_id = ffc.facility_id AND c.financial_class_id = ffc.financial_class_id
-        JOIN dbo.core_standard_payers csp ON ffc.payer_id = csp.payer_id
-        WHERE 1=1
-        """
-    ]
-
-    # Remove empty strings from query_parts (e.g. if TOP was not added)
-    query_parts = [part for part in query_parts if part]
-
-    params = {}
+    FROM dbo.claims c
+    JOIN dbo.claims_line_items cli ON c.facility_id = cli.facility_id AND c.patient_account_number = cli.patient_account_number
+    LEFT JOIN dbo.claims_diagnosis cd ON c.facility_id = cd.facility_id AND c.patient_account_number = cd.patient_account_number AND cd.diagnosis_sequence = 1
+    LEFT JOIN dbo.physicians p ON cli.rendering_provider_id = p.rendering_provider_id
+    JOIN dbo.facility_financial_classes ffc ON c.facility_id = ffc.facility_id AND c.financial_class_id = ffc.financial_class_id
+    JOIN dbo.core_standard_payers csp ON ffc.payer_id = csp.payer_id
+    WHERE 1=1
+    """
+    
+    filters = []
+    params = [] # Parameters for pyodbc
 
     if facility_id:
-        query_parts.append("AND c.facility_id = %(facility_id)s")
-        params['facility_id'] = facility_id
+        if isinstance(facility_id, list):
+            if facility_id: 
+                placeholders = ','.join(['?'] * len(facility_id))
+                filters.append(f"c.facility_id IN ({placeholders})")
+                params.extend(facility_id)
+        else: 
+            filters.append("c.facility_id = ?")
+            params.append(facility_id)
+            
     if payer_id:
-        # Assuming csp.payer_id is the correct field for filtering by payer_id from parameters
-        query_parts.append("AND csp.payer_id = %(payer_id)s")
-        params['payer_id'] = payer_id
+        if isinstance(payer_id, list):
+            if payer_id:
+                placeholders = ','.join(['?'] * len(payer_id))
+                filters.append(f"ffc.payer_id IN ({placeholders})")
+                params.extend(payer_id)
+        else:
+            filters.append("ffc.payer_id = ?")
+            params.append(payer_id)
+
     if start_date:
-        query_parts.append("AND c.created_at >= %(start_date)s")
-        params['start_date'] = start_date
+        filters.append("c.created_at >= ?")
+        params.append(start_date)
     if end_date:
-        query_parts.append("AND c.created_at <= %(end_date)s")
-        params['end_date'] = end_date
+        filters.append("c.created_at <= ?")
+        params.append(end_date)
 
-    query = " ".join(query_parts)
-
-    # Add ORDER BY clause, e.g. by claim_date descending, if no other ordering is implied by TOP
-    # For SQL Server, TOP without ORDER BY is non-deterministic for which rows are returned
-    # if not (limit and isinstance(limit, (int, float)) and limit > 0): # Or if you always want an order
-    query += " ORDER BY c.created_at DESC"
-
+    if filters:
+        base_query += " AND " + " AND ".join(filters)
+    
+    base_query += " ORDER BY c.created_at DESC, c.patient_account_number, cli.line_number;"
 
     try:
-        print(f"Executing get_processed_claims query: {query[:500]}... with params: {params}") # Log truncated query
-        df = pd.read_sql_query(query, engine, params=params)
-        print(f"Successfully fetched {len(df)} processed claims.")
+        df = pd.read_sql_query(base_query, engine, params=params)
         return df
     except Exception as e:
         print(f"Error fetching processed claims: {e}")
         return pd.DataFrame()
 
 def get_failed_claims(facility_id=None, failure_category=None, start_date=None, end_date=None, limit=100):
-    """
-    Retrieves failed claims data, optionally filtered by facility, failure category, date range, and limit.
-    """
+    """Fetches failed claims data with filters."""
     engine = get_sqlserver_engine()
-    if engine is None:
-        print("Database engine not available. Cannot fetch failed claims.")
+    if not engine:
         return pd.DataFrame()
 
-    query_parts = [
-        "SELECT",
-        f"TOP {int(limit)}" if limit and isinstance(limit, (int, float)) and limit > 0 else "",
-        """
-        fc.claim_id, fc.facility_id, f.facility_name, fc.patient_account_number,
-        fc.failure_reason, fc.failure_category, fc.processing_stage,
+    effective_limit = limit if isinstance(limit, int) and limit > 0 else 100000
+
+    base_query = f"""
+    SELECT TOP ({effective_limit})
+        fc.claim_id, fc.facility_id, f.facility_name, fc.patient_account_number, 
+        fc.failure_reason, fc.failure_category, fc.processing_stage, 
         fc.failed_at, fc.resolution_status, fc.potential_revenue_loss, fc.coder_id
-        FROM dbo.failed_claims fc
-        LEFT JOIN dbo.facilities f ON fc.facility_id = f.facility_id
-        WHERE 1=1
-        """
-    ]
-    query_parts = [part for part in query_parts if part]
-    params = {}
+    FROM dbo.failed_claims fc
+    LEFT JOIN dbo.facilities f ON fc.facility_id = f.facility_id
+    WHERE 1=1
+    """
+    filters = []
+    params = []
 
     if facility_id:
-        query_parts.append("AND fc.facility_id = %(facility_id)s")
-        params['facility_id'] = facility_id
+        if isinstance(facility_id, list):
+            if facility_id:
+                placeholders = ','.join(['?'] * len(facility_id))
+                filters.append(f"fc.facility_id IN ({placeholders})")
+                params.extend(facility_id)
+        else:
+            filters.append("fc.facility_id = ?")
+            params.append(facility_id)
+
     if failure_category:
-        query_parts.append("AND fc.failure_category = %(failure_category)s")
-        params['failure_category'] = failure_category
+        if isinstance(failure_category, list):
+            if failure_category:
+                placeholders = ','.join(['?'] * len(failure_category))
+                filters.append(f"fc.failure_category IN ({placeholders})")
+                params.extend(failure_category)
+        else:
+            filters.append("fc.failure_category = ?")
+            params.append(failure_category)
+            
     if start_date:
-        query_parts.append("AND fc.failed_at >= %(start_date)s")
-        params['start_date'] = start_date
+        filters.append("fc.failed_at >= ?")
+        params.append(start_date)
     if end_date:
-        query_parts.append("AND fc.failed_at <= %(end_date)s")
-        params['end_date'] = end_date
+        filters.append("fc.failed_at <= ?")
+        params.append(end_date)
 
-    query = " ".join(query_parts)
-    query += " ORDER BY fc.failed_at DESC"
-
+    if filters:
+        base_query += " AND " + " AND ".join(filters)
+        
+    base_query += " ORDER BY fc.failed_at DESC;"
 
     try:
-        print(f"Executing get_failed_claims query: {query[:500]}... with params: {params}") # Log truncated query
-        df = pd.read_sql_query(query, engine, params=params)
-        print(f"Successfully fetched {len(df)} failed claims.")
+        df = pd.read_sql_query(base_query, engine, params=params)
         return df
     except Exception as e:
         print(f"Error fetching failed claims: {e}")
         return pd.DataFrame()
 
 if __name__ == '__main__':
-    print("Testing claims_queries.py...")
-
-    # Note: These tests will attempt to connect to the database.
-    # Ensure your db_connector.py has valid (even if placeholder) credentials
-    # or is mocked, otherwise these will likely fail if the DB is not accessible.
-
-    print("\n--- Testing get_distinct_facilities ---")
-    facilities = get_distinct_facilities()
-    if facilities:
-        print(f"Found {len(facilities)} facilities. First 3: {facilities[:3]}")
-    else:
-        print("No facilities found or error occurred.")
-
-    print("\n--- Testing get_distinct_payers ---")
-    payers = get_distinct_payers()
-    if payers:
-        print(f"Found {len(payers)} payers. First 3: {payers[:3]}")
-    else:
-        print("No payers found or error occurred.")
-
-    print("\n--- Testing get_distinct_failure_categories ---")
-    failure_categories = get_distinct_failure_categories()
-    if failure_categories:
-        print(f"Found {len(failure_categories)} failure categories. First 3: {failure_categories[:3]}")
-    else:
-        print("No failure categories found or error occurred.")
-
-    print("\n--- Testing get_processed_claims ---")
-    # Example: Get top 5 processed claims (no filters)
-    processed_claims_df = get_processed_claims(limit=5)
-    if not processed_claims_df.empty:
-        print("Sample of processed claims data:")
-        print(processed_claims_df.head())
-        print(f"Shape of processed_claims_df: {processed_claims_df.shape}")
-    else:
-        print("No processed claims data returned (or an error occurred).")
-
-    print("\n--- Testing get_failed_claims ---")
-    # Example: Get top 5 failed claims for a specific category (if you have one)
-    # failed_claims_df = get_failed_claims(failure_category="Eligibility", limit=5)
-    failed_claims_df = get_failed_claims(limit=5) # Test without specific category for now
-    if not failed_claims_df.empty:
-        print("Sample of failed claims data:")
-        print(failed_claims_df.head())
-        print(f"Shape of failed_claims_df: {failed_claims_df.shape}")
-    else:
-        print("No failed claims data returned (or an error occurred).")
-
-    print("\nClaims queries tests finished.")
-# Contains SQL queries related to claims data
-import pandas as pd
-from claims_ui.app.db_connector import get_sqlserver_engine # Assuming db_connector is in the same app directory
-
-def get_processed_claims(facility_id=None, payer_id=None, start_date=None, end_date=None, limit=100):
-    """
-    Retrieves processed claims data by joining various related tables.
-    Filters can be applied for facility, payer, date range, and a limit can be set.
-    Pulls the primary diagnosis based on diagnosis_sequence = 1.
-    """
-    engine = get_sqlserver_engine()
-    if engine is None:
-        print("Database engine not available. Cannot fetch processed claims.")
-        return pd.DataFrame()
-
-    query_parts = [
-        "SELECT",
-        # Add TOP clause if limit is specified and is a positive integer
-        f"TOP {int(limit)}" if limit and isinstance(limit, (int, float)) and limit > 0 else "",
-        """
-        c.patient_account_number, c.medical_record_number, c.patient_name, c.date_of_birth, c.gender, c.created_at AS claim_date,
-        cli.line_number, cli.procedure_code, cli.modifier1, cli.units, cli.charge_amount, cli.service_from_date, cli.rvu_value, cli.reimbursement_amount,
-        cd.diagnosis_code AS primary_diagnosis_code, cd.diagnosis_description AS primary_diagnosis_description,
-        p.first_name AS provider_first_name, p.last_name AS provider_last_name,
-        csp.payer_name
-        FROM dbo.claims c
-        JOIN dbo.claims_line_items cli ON c.facility_id = cli.facility_id AND c.patient_account_number = cli.patient_account_number
-        -- Join for primary diagnosis (diagnosis_sequence = 1)
-        LEFT JOIN dbo.claims_diagnosis cd ON c.facility_id = cd.facility_id AND c.patient_account_number = cd.patient_account_number AND cd.diagnosis_sequence = 1
-        LEFT JOIN dbo.physicians p ON cli.rendering_provider_id = p.rendering_provider_id
-        JOIN dbo.facility_financial_classes ffc ON c.facility_id = ffc.facility_id AND c.financial_class_id = ffc.financial_class_id
-        JOIN dbo.core_standard_payers csp ON ffc.payer_id = csp.payer_id
-        WHERE 1=1
-        """
-    ]
-
-    # Remove empty strings from query_parts (e.g. if TOP was not added)
-    query_parts = [part for part in query_parts if part]
-
-    params = {}
-
-    if facility_id:
-        query_parts.append("AND c.facility_id = %(facility_id)s")
-        params['facility_id'] = facility_id
-    if payer_id:
-        # Assuming csp.payer_id is the correct field for filtering by payer_id from parameters
-        query_parts.append("AND csp.payer_id = %(payer_id)s")
-        params['payer_id'] = payer_id
-    if start_date:
-        query_parts.append("AND c.created_at >= %(start_date)s")
-        params['start_date'] = start_date
-    if end_date:
-        query_parts.append("AND c.created_at <= %(end_date)s")
-        params['end_date'] = end_date
-
-    query = " ".join(query_parts)
-
-    # Add ORDER BY clause, e.g. by claim_date descending, if no other ordering is implied by TOP
-    # For SQL Server, TOP without ORDER BY is non-deterministic for which rows are returned
-    # if not (limit and isinstance(limit, (int, float)) and limit > 0): # Or if you always want an order
-    query += " ORDER BY c.created_at DESC"
-
-
-    try:
-        print(f"Executing get_processed_claims query: {query[:500]}... with params: {params}") # Log truncated query
-        df = pd.read_sql_query(query, engine, params=params)
-        print(f"Successfully fetched {len(df)} processed claims.")
-        return df
-    except Exception as e:
-        print(f"Error fetching processed claims: {e}")
-        return pd.DataFrame()
-
-def get_failed_claims(facility_id=None, failure_category=None, start_date=None, end_date=None, limit=100):
-    """
-    Retrieves failed claims data, optionally filtered by facility, failure category, date range, and limit.
-    """
-    engine = get_sqlserver_engine()
-    if engine is None:
-        print("Database engine not available. Cannot fetch failed claims.")
-        return pd.DataFrame()
-
-    query_parts = [
-        "SELECT",
-        f"TOP {int(limit)}" if limit and isinstance(limit, (int, float)) and limit > 0 else "",
-        """
-        fc.claim_id, fc.facility_id, f.facility_name, fc.patient_account_number,
-        fc.failure_reason, fc.failure_category, fc.processing_stage,
-        fc.failed_at, fc.resolution_status, fc.potential_revenue_loss, fc.coder_id
-        FROM dbo.failed_claims fc
-        LEFT JOIN dbo.facilities f ON fc.facility_id = f.facility_id
-        WHERE 1=1
-        """
-    ]
-    query_parts = [part for part in query_parts if part]
-    params = {}
-
-    if facility_id:
-        query_parts.append("AND fc.facility_id = %(facility_id)s")
-        params['facility_id'] = facility_id
-    if failure_category:
-        query_parts.append("AND fc.failure_category = %(failure_category)s")
-        params['failure_category'] = failure_category
-    if start_date:
-        query_parts.append("AND fc.failed_at >= %(start_date)s")
-        params['start_date'] = start_date
-    if end_date:
-        query_parts.append("AND fc.failed_at <= %(end_date)s")
-        params['end_date'] = end_date
-
-    query = " ".join(query_parts)
-    query += " ORDER BY fc.failed_at DESC"
-
-
-    try:
-        print(f"Executing get_failed_claims query: {query[:500]}... with params: {params}") # Log truncated query
-        df = pd.read_sql_query(query, engine, params=params)
-        print(f"Successfully fetched {len(df)} failed claims.")
-        return df
-    except Exception as e:
-        print(f"Error fetching failed claims: {e}")
-        return pd.DataFrame()
-
-if __name__ == '__main__':
-    print("Testing claims_queries.py...")
-
-    # Note: These tests will attempt to connect to the database.
-    # Ensure your db_connector.py has valid (even if placeholder) credentials
-    # or is mocked, otherwise these will likely fail if the DB is not accessible.
-
-    print("\n--- Testing get_distinct_facilities ---")
-    facilities = get_distinct_facilities()
-    if facilities:
-        print(f"Found {len(facilities)} facilities. First 3: {facilities[:3]}")
-    else:
-        print("No facilities found or error occurred.")
-
-    print("\n--- Testing get_distinct_payers ---")
-    payers = get_distinct_payers()
-    if payers:
-        print(f"Found {len(payers)} payers. First 3: {payers[:3]}")
-    else:
-        print("No payers found or error occurred.")
-
-    print("\n--- Testing get_distinct_failure_categories ---")
-    failure_categories = get_distinct_failure_categories()
-    if failure_categories:
-        print(f"Found {len(failure_categories)} failure categories. First 3: {failure_categories[:3]}")
-    else:
-        print("No failure categories found or error occurred.")
-
-    print("\n--- Testing get_processed_claims ---")
-    # Example: Get top 5 processed claims (no filters)
-    processed_claims_df = get_processed_claims(limit=5)
-    if not processed_claims_df.empty:
-        print("Sample of processed claims data:")
-        print(processed_claims_df.head())
-        print(f"Shape of processed_claims_df: {processed_claims_df.shape}")
-    else:
-        print("No processed claims data returned (or an error occurred).")
-
-    print("\n--- Testing get_failed_claims ---")
-    # Example: Get top 5 failed claims for a specific category (if you have one)
-    # failed_claims_df = get_failed_claims(failure_category="Eligibility", limit=5)
-    failed_claims_df = get_failed_claims(limit=5) # Test without specific category for now
-    if not failed_claims_df.empty:
-        print("Sample of failed claims data:")
-        print(failed_claims_df.head())
-        print(f"Shape of failed_claims_df: {failed_claims_df.shape}")
-    else:
-        print("No failed claims data returned (or an error occurred).")
-
-    print("\nClaims queries tests finished.")
+    print("Testing claims_queries.py (ensure db_connector.py is configured and SQL Server is accessible).")
+    # Example test calls (uncomment and run if your DB is configured):
+    # facilities = get_distinct_facilities()
+    # print(f"Found {len(facilities)} facilities. First few: {facilities[:3]}")
+    # payers = get_distinct_payers()
+    # print(f"Found {len(payers)} payers. First few: {payers[:3]}")
+    # failure_cats = get_distinct_failure_categories()
+    # print(f"Found {len(failure_cats)} failure categories. First few: {failure_cats[:3]}")
+    # processed = get_processed_claims(limit=2)
+    # print(f"Processed claims (limit 2):\n{processed}")
+    # failed = get_failed_claims(limit=2)
+    # print(f"Failed claims (limit 2):\n{failed}")

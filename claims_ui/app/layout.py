@@ -1,66 +1,39 @@
-# Defines the layout of the Dash application
-from dash import dcc
-from dash import html
-# from . import app # app is typically imported in callbacks, not directly needed for layout definition usually
+from dash import dcc, html
+
+# This module defines the main layout of the application.
+# It includes the header, tabs for different dashboards, and a content area
+# where the content of the selected tab will be rendered by callbacks.
 
 def create_main_layout():
     """
-    Creates the main layout structure for the Dash application.
-    Includes a title and a tabbed interface for different sections.
+    Creates the main layout for the Dash application.
+
+    Returns:
+        html.Div: The main layout component.
     """
-    return html.Div(id='app-root', children=[ # Changed main-container to app-root for clarity
-        html.Div(className='app-header', children=[
-            html.H1("Claims Analytics Dashboard") # Removed inline style, will be handled by CSS
-        ]),
+    return html.Div([
+        html.Div([
+            html.H1("Claims Analytics Dashboard", style={'textAlign': 'center'})
+        ], className='app-header'),
 
-        html.Div(className='tab-container', children=[
+        html.Div([
             dcc.Tabs(id='main-tabs', value='tab-processed-claims', children=[
-                dcc.Tab(label="Processed Claims", value="tab-processed-claims"),
-                dcc.Tab(label="Failed Claims", value="tab-failed-claims"),
-                dcc.Tab(label="Processing Metrics", value="tab-processing-metrics"),
-                dcc.Tab(label="Healthcare Analytics", value="tab-healthcare-analytics"),
+                dcc.Tab(label='Processed Claims', value='tab-processed-claims'),
+                dcc.Tab(label='Failed Claims', value='tab-failed-claims'),
+                dcc.Tab(label='Processing Metrics', value='tab-processing-metrics'),
+                dcc.Tab(label='Healthcare Analytics', value='tab-healthcare-analytics'),
             ]),
-
-            # This Div will be updated by callbacks based on the selected tab
-            html.Div(id='main-content-area') # Removed inline style, padding handled by CSS or content specific styles
-        ])
+            # This Div will be populated by callbacks based on the selected tab
+            html.Div(id='main-content-area')
+        ], className='tab-container')
     ])
 
-# If you were to assign it directly here, it might look like:
-# layout = create_main_layout()
-# However, it's common to set app.layout in run.py or the main app file.
-print("Main layout definition created.")
-
-# Defines the layout of the Dash application
-import dash_core_components as dcc
-import dash_html_components as html
-# from . import app # app is typically imported in callbacks, not directly needed for layout definition usually
-
-def create_main_layout():
-    """
-    Creates the main layout structure for the Dash application.
-    Includes a title and a tabbed interface for different sections.
-    """
-    return html.Div(id='app-root', children=[ # Changed main-container to app-root for clarity
-        html.Div(className='app-header', children=[
-            html.H1("Claims Analytics Dashboard") # Removed inline style, will be handled by CSS
-        ]),
-
-        html.Div(className='tab-container', children=[
-            dcc.Tabs(id='main-tabs', value='tab-processed-claims', children=[
-                dcc.Tab(label="Processed Claims", value="tab-processed-claims"),
-                dcc.Tab(label="Failed Claims", value="tab-failed-claims"),
-                dcc.Tab(label="Processing Metrics", value="tab-processing-metrics"),
-                dcc.Tab(label="Healthcare Analytics", value="tab-healthcare-analytics"),
-            ]),
-
-            # This Div will be updated by callbacks based on the selected tab
-            html.Div(id='main-content-area') # Removed inline style, padding handled by CSS or content specific styles
-        ])
-    ])
-
-# If you were to assign it directly here, it might look like:
-# layout = create_main_layout()
-# However, it's common to set app.layout in run.py or the main app file.
-print("Main layout definition created.")
-
+if __name__ == '__main__':
+    # This part is for testing the layout if you run this file directly.
+    # In a real Dash app, this layout is usually assigned to app.layout in the main app file.
+    # To test, you would need a dummy Dash app instance.
+    # from dash import Dash
+    # app = Dash(__name__)
+    # app.layout = create_main_layout()
+    # app.run_server(debug=True)
+    print("This is the main layout definition. It's typically imported and used in run.py or app.py.")

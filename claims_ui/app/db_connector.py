@@ -1,67 +1,77 @@
-# Handles database connections
 import sqlalchemy
+import urllib
 
-# Configuration (Ideally, use environment variables or a config file for these)
+# --- Database Configuration ---
+# IMPORTANT: Replace these placeholder values with your actual SQL Server details.
+# It is highly recommended to use environment variables or a secure configuration manager
+# for sensitive information like passwords, rather than hardcoding them.
 DB_CONFIG = {
-    "server_name": "localhost",  # Replace with your SQL Server instance name
-    "database_name": "smart_pro_claims", # Replace with your database name
-    "username": "sa",        # Replace with your SQL Server username
-    "password": "ClearToFly1",        # Replace with your SQL Server password
-    "driver": "ODBC Driver 17 for SQL Server" # Ensure this driver is installed
+    'server_name': 'YOUR_SQL_SERVER_NAME',  # e.g., 'localhost\SQLEXPRESS' or your server's DNS name
+    'database_name': 'smart_pro_claims', # As per your schema files
+    'username': 'YOUR_USERNAME',          # Your SQL Server username
+    'password': 'YOUR_PASSWORD',          # Your SQL Server password
+    'driver': 'ODBC Driver 17 for SQL Server' # Ensure this driver is installed
 }
 
 def get_sqlserver_engine():
     """
     Creates and returns a SQLAlchemy engine for SQL Server.
 
-    Constructs the connection string using predefined configuration.
-    Includes basic error handling for connection issues.
+    Uses pyodbc as the DBAPI.
+    Connection parameters are taken from the DB_CONFIG dictionary.
+
+    Returns:
+        sqlalchemy.engine.Engine: The SQLAlchemy engine instance, or None if an error occurs.
     """
     try:
-        # Construct the connection string
-        # For security, connection details (server, db, user, pass) should ideally be
-        # stored in environment variables or a secure configuration management system,
-        # not hardcoded in the script.
-        conn_str = (
-            f"mssql+pyodbc://{DB_CONFIG['username']}:{DB_CONFIG['password']}"
-            f"@{DB_CONFIG['server_name']}/{DB_CONFIG['database_name']}"
-            f"?driver={DB_CONFIG['driver'].replace(' ', '+')}"
+        # For Windows Authentication, you might use: integrated_security = 'SSPI'
+        # For SQL Server Authentication, provide username and password.
+        params = urllib.parse.quote_plus(
+            f"DRIVER={{{DB_CONFIG['driver']}}};"
+            f"SERVER={DB_CONFIG['server_name']};"
+            f"DATABASE={DB_CONFIG['database_name']};"
+            f"UID={DB_CONFIG['username']};"
+            f"PWD={DB_CONFIG['password']};"
+            f"TrustServerCertificate=yes;" # Add if using self-signed cert or for local dev
         )
 
-        # Create the SQLAlchemy engine
-        engine = sqlalchemy.create_engine(conn_str)
+        # Connection URL format for mssql+pyodbc
+        # Docs: https://docs.sqlalchemy.org/en/14/dialects/mssql.html#module-sqlalchemy.dialects.mssql.pyodbc
+        conn_str = f"mssql+pyodbc:///?odbc_connect={params}"
 
-        print(f"SQLAlchemy engine created for {DB_CONFIG['database_name']} on {DB_CONFIG['server_name']}")
+        engine = sqlalchemy.create_engine(conn_str)
+        # print(f"Successfully created SQLAlchemy engine for SQL Server: {DB_CONFIG['server_name']}")
         return engine
 
     except Exception as e:
-        print(f"Error creating SQL Server engine: {e}")
-        # In a real application, you might want to log this error or raise it
+        print(f"Error creating SQLAlchemy engine for SQL Server: {e}")
+        print("Please check:")
+        print(f"1. SQL Server is running and accessible from: {DB_CONFIG['server_name']}")
+        print(f"2. Database '{DB_CONFIG['database_name']}' exists.")
+        print(f"3. Credentials (username/password) are correct.")
+        print(f"4. ODBC Driver '{DB_CONFIG['driver']}' is installed and correctly named.")
+        print(f"5. Firewall rules allow connection to the SQL Server port (default 1433).")
         return None
 
+# --- Test Connection (optional, run directly to verify) ---
 if __name__ == '__main__':
-    print("Attempting to create SQL Server engine (using placeholder credentials)...")
+    print("Attempting to connect to SQL Server using configuration in db_connector.py...")
     engine = get_sqlserver_engine()
 
     if engine:
-        print("Engine creation attempted.")
         try:
-            # Try to establish a connection
             with engine.connect() as connection:
-                print("Successfully connected to the database!")
-                # You could run a simple query here if needed, e.g.:
-                # result = connection.execute(sqlalchemy.text("SELECT 1"))
-                # print(f"Test query result: {result.scalar_one()}")
-        except sqlalchemy.exc.OperationalError as e:
-            print(f"Connection failed (OperationalError): {e}")
-            print("Please ensure:")
-            print(f"1. SQL Server '{DB_CONFIG['server_name']}' is running and accessible.")
-            print(f"2. Database '{DB_CONFIG['database_name']}' exists.")
-            print(f"3. Credentials for user '{DB_CONFIG['username']}' are correct.")
-            print(f"4. The ODBC driver '{DB_CONFIG['driver']}' is installed and configured correctly.")
-            print("5. Network connectivity to the server is not blocked by a firewall.")
+                print("Successfully connected to the SQL Server database!")
+                print("SQLAlchemy Engine Details:", engine)
+                # You can run a simple query here for further testing if needed, e.g.:
+                # result = connection.execute(sqlalchemy.text("SELECT @@version;"))
+                # for row in result:
+                #     print("SQL Server Version:", row[0])
+            print("Connection test successful and connection closed.")
+        except sqlalchemy.exc.OperationalError as op_err:
+            print(f"OperationalError during connection test: {op_err}")
+            print("This often means the server was found, but there was an issue with database name, login credentials, or permissions.")
         except Exception as e:
-            print(f"An unexpected error occurred during connection test: {e}")
+            print(f"An unexpected error occurred during the connection test: {e}")
     else:
-        print("Engine creation failed. See error message above.")
-        print("Please update the placeholder credentials in DB_CONFIG within this script.")
+        print("Failed to create the SQLAlchemy engine. Connection test aborted.")

@@ -1,12 +1,12 @@
-# Initializes the Dash app
 import dash
 
-# Create the Dash app instance
-# suppress_callback_exceptions=True is helpful for multi-page/tabbed apps
-# where callbacks might be defined in other files before their layout is added to the main app layout.
+# Initialize the Dash application
+# suppress_callback_exceptions=True is useful for multi-page apps or apps where
+# callbacks are defined in separate files and layout components are generated dynamically.
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
-# Server attribute is needed for some deployment environments (e.g., Gunicorn)
+# Expose the Flask server instance for potential WSGI deployment
 server = app.server
 
-print("Dash app initialized.")
+# You can configure Dash further here if needed, e.g., app.title
+app.title = "Claims Analytics Dashboard"

@@ -1,124 +1,44 @@
-from dash import dcc
-from dash import html
+from dash import dcc, html
 
 def create_processing_metrics_layout():
-    """
-    Creates the layout for the Processing Metrics tab.
-    Includes filters, KPI summaries, and graphs.
-    Dropdown options will be populated by a callback.
-    """
-    return html.Div(id='processing-metrics-layout-container', children=[
-        html.Div(className='filter-section', children=[
+    """Creates the layout for the Processing Metrics Dashboard."""
+    return html.Div([
+        html.Div([
             html.H4("Processing Metrics Filters"),
-            dcc.Dropdown(
-                id='org-filter-pm',
-                placeholder='Select Organization (All)',
-                multi=False,
-                options=[],
-                style={'width': '100%', 'marginBottom': '10px'}
-            ),
-            dcc.Dropdown(
-                id='region-filter-pm',
-                placeholder='Select Region (All)',
-                multi=False,
-                options=[],
-                style={'width': '100%', 'marginBottom': '10px'}
-            ),
-            dcc.Dropdown(
-                id='facility-filter-pm',
-                placeholder='Select Facility(s) (All)',
-                multi=True,
-                options=[],
-                style={'width': '100%', 'marginBottom': '10px'}
-            ),
-            dcc.DatePickerRange(
-                id='date-picker-range-pm',
-                start_date_placeholder_text='Start Date',
-                end_date_placeholder_text='End Date',
-                className='date-picker-full-width',
-                style={'marginBottom': '10px'}
-            ),
-            html.Button('Apply Filters', id='apply-filters-pm-button', n_clicks=0, className='btn btn-primary')
-        ]),
+            html.Div([
+                dcc.Dropdown(id='org-filter-pm', placeholder='Select Organization', multi=False),
+            ], style={'marginBottom': '10px'}),
+            html.Div([
+                dcc.Dropdown(id='region-filter-pm', placeholder='Select Region (after Org)', multi=False),
+            ], style={'marginBottom': '10px'}),
+            html.Div([
+                dcc.Dropdown(id='facility-filter-pm', placeholder='Select Facility(s) (Optional)', multi=True),
+            ], style={'marginBottom': '10px'}),
+            html.Div([
+                dcc.DatePickerRange(
+                    id='date-picker-range-pm',
+                    start_date_placeholder_text='Start Date',
+                    end_date_placeholder_text='End Date',
+                    display_format='YYYY-MM-DD'
+                ),
+            ], style={'marginBottom': '15px'}),
+            html.Button('Apply Filters', id='apply-filters-pm-button', n_clicks=0)
+        ], className='filter-section'),
 
-        # KPI container already has 'kpi-container' class from style.css for flexbox layout
-        html.Div(id='kpi-summary-pm', className='kpi-container filter-section'), # Also adding filter-section for border/bg
-
-        # Group graphs into rows for better layout control if needed, or apply graph-container individually
-        html.Div(className='graph-row', children=[
-            html.Div(className='graph-container graph-item-half-width', children=[
-                dcc.Graph(id='daily-trends-graph-pm')
-            ]),
-            html.Div(className='graph-container graph-item-half-width', children=[
-                dcc.Graph(id='facility-comparison-graph-pm')
-            ])
-        ]),
-
-        html.Div(className='graph-container graph-item-full-width', children=[ # Full width for this one
-             dcc.Graph(id='org-region-summary-graph-pm')
-        ])
+        html.Div(id='kpi-summary-pm', className='kpi-summary-pm'), # Styled via CSS
+        html.Hr(),
+        html.Div([
+            #html.H5("Daily Processing Trends"), # Title is in graph now
+            dcc.Graph(id='daily-trends-graph-pm')
+        ], className='graph-container'),
+        
+        html.Div([
+            #html.H5("Facility Comparison"), # Title is in graph now
+            dcc.Graph(id='facility-comparison-graph-pm')
+        ], className='graph-container'),
+        
+        html.Div([
+            #html.H5("Organization/Region Summary"), # Title is in graph now
+            dcc.Graph(id='org-region-summary-graph-pm')
+        ], className='graph-container')
     ])
-
-print("Processing metrics layout definition updated with CSS classes.")
-import dash_core_components as dcc
-import dash_html_components as html
-
-def create_processing_metrics_layout():
-    """
-    Creates the layout for the Processing Metrics tab.
-    Includes filters, KPI summaries, and graphs.
-    Dropdown options will be populated by a callback.
-    """
-    return html.Div(id='processing-metrics-layout-container', children=[
-        html.Div(className='filter-section', children=[
-            html.H4("Processing Metrics Filters"),
-            dcc.Dropdown(
-                id='org-filter-pm',
-                placeholder='Select Organization (All)',
-                multi=False,
-                options=[],
-                style={'width': '100%', 'marginBottom': '10px'}
-            ),
-            dcc.Dropdown(
-                id='region-filter-pm',
-                placeholder='Select Region (All)',
-                multi=False,
-                options=[],
-                style={'width': '100%', 'marginBottom': '10px'}
-            ),
-            dcc.Dropdown(
-                id='facility-filter-pm',
-                placeholder='Select Facility(s) (All)',
-                multi=True,
-                options=[],
-                style={'width': '100%', 'marginBottom': '10px'}
-            ),
-            dcc.DatePickerRange(
-                id='date-picker-range-pm',
-                start_date_placeholder_text='Start Date',
-                end_date_placeholder_text='End Date',
-                className='date-picker-full-width',
-                style={'marginBottom': '10px'}
-            ),
-            html.Button('Apply Filters', id='apply-filters-pm-button', n_clicks=0, className='btn btn-primary')
-        ]),
-
-        # KPI container already has 'kpi-container' class from style.css for flexbox layout
-        html.Div(id='kpi-summary-pm', className='kpi-container filter-section'), # Also adding filter-section for border/bg
-
-        # Group graphs into rows for better layout control if needed, or apply graph-container individually
-        html.Div(className='graph-row', children=[
-            html.Div(className='graph-container graph-item-half-width', children=[
-                dcc.Graph(id='daily-trends-graph-pm')
-            ]),
-            html.Div(className='graph-container graph-item-half-width', children=[
-                dcc.Graph(id='facility-comparison-graph-pm')
-            ])
-        ]),
-
-        html.Div(className='graph-container graph-item-full-width', children=[ # Full width for this one
-             dcc.Graph(id='org-region-summary-graph-pm')
-        ])
-    ])
-
-print("Processing metrics layout definition updated with CSS classes.")
