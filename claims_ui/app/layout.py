@@ -2,33 +2,48 @@ from dash import dcc, html
 
 def create_main_layout():
     """
-    Creates the main layout for the Dash application.
-    Features a sticky header and a styled tab bar.
+    Creates the main layout with a sidebar and content area.
+    Navigation is handled by dcc.Link and dcc.Location.
     """
+    # This is the sidebar component
+    sidebar = html.Div(
+        [
+            html.H2("Claims Processor", className="sidebar-title"),
+            html.Hr(),
+            html.Nav(
+                [
+                    dcc.Link("Processing Metrics", href="/", className="nav-link"),
+                    dcc.Link("Healthcare Analytics", href="/analytics", className="nav-link"),
+                    dcc.Link("Processed Claims", href="/processed", className="nav-link"),
+                    dcc.Link("Failed Claims", href="/failed", className="nav-link"),
+                ],
+                className="nav-group"
+            ),
+        ],
+        className="sidebar",
+    )
+
+    # This is the main content area
+    content = html.Div(
+        [
+            # Header bar within the content area
+            html.Div([
+                html.H1(id="content-title"), # Title will be updated by callback
+                # Placeholder for user icons/controls on the right
+                html.Div(className="user-controls-placeholder") 
+            ], className="content-header"),
+            
+            # The actual page content will be rendered here by a callback
+            html.Div(id="page-content", className="page-content-wrapper"),
+        ],
+        className="main-content",
+    )
+
+    # The root layout component
     return html.Div([
-        # Main application header
-        html.Div([
-            html.H1("Claims Analytics Dashboard")
-        ], className='app-header'),
-
-        # Wrapper for the tabs to style the bar they sit in
-        html.Div([
-            dcc.Tabs(
-                id='main-tabs', 
-                value='tab-processing-metrics', # Default to the most visual tab
-                className='custom-styled-tabs',
-                children=[
-                    dcc.Tab(label='Processing Metrics', value='tab-processing-metrics'),
-                    dcc.Tab(label='Healthcare Analytics', value='tab-healthcare-analytics'),
-                    dcc.Tab(label='Processed Claims', value='tab-processed-claims'),
-                    dcc.Tab(label='Failed Claims', value='tab-failed-claims'),
-                ]
-            )
-        ], className='tab-wrapper-bar'),
-
-        # Main content area where tab-specific layouts are rendered
-        # This wrapper adds padding and context for the cards within it.
-        html.Div(id='main-content-area', className='dashboard-main-content')
+        dcc.Location(id="url", refresh=False), # Essential for URL-based navigation
+        sidebar,
+        content
     ])
 
 if __name__ == '__main__':

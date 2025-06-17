@@ -2,223 +2,221 @@
    Global Styles & Variables
    ========================================================================== */
 :root {
-    --primary-color: #4A90E2; /* A professional blue */
-    --secondary-color: #50E3C2; /* A soft teal for accents */
-    --text-color-dark: #2c3e50; /* Dark slate for text */
-    --text-color-light: #8492a6; /* Lighter gray for subtext */
-    --background-color: #f0f2f5; /* Light gray page background */
-    --card-background-color: #ffffff;
-    --border-color: #e2e8f0;
+    --sidebar-bg: #2c3e50; /* Dark slate */
+    --sidebar-text: #ecf0f1; /* Light grey */
+    --sidebar-text-hover: #ffffff;
+    --sidebar-active-bg: #34495e; /* Slightly lighter slate */
+    --header-bg: #45b39d; /* Main accent color from image */
+    --content-bg: #e9ecef; /* Light background for content area */
+    --card-bg: #ffffff;
+    --card-border: #dee2e6;
+    --text-color: #343a40;
+    --text-muted: #6c757d;
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --card-border-radius: 8px;
+    --card-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    --card-border-radius: 6px;
+}
+
+html {
+    box-sizing: border-box;
+}
+*, *:before, *:after {
+    box-sizing: inherit;
 }
 
 body {
     font-family: var(--font-family);
     margin: 0;
     padding: 0;
-    background-color: var(--background-color);
-    color: var(--text-color-dark);
+    background-color: var(--content-bg);
+    color: var(--text-color);
+    display: flex; /* Root element display flex */
 }
+
+/* Let Dash's root div take up full viewport */
+#_dash-root {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+}
+#_dash-root > div:first-child { /* This is the main html.Div from layout.py */
+    width: 100%;
+    display: flex;
+}
+
 
 /* ==========================================================================
-   Header & Main Layout
+   Sidebar Navigation
    ========================================================================== */
-.app-header {
-    background-color: var(--card-background-color);
-    color: var(--text-color-dark);
-    padding: 16px 32px;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+.sidebar {
+    width: 260px;
+    min-width: 260px;
+    background-color: var(--sidebar-bg);
+    color: var(--sidebar-text);
+    padding: 20px;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
-.app-header h1 {
-    margin: 0;
-    font-size: 1.6em;
+.sidebar-title {
+    color: var(--sidebar-text-hover);
+    font-size: 1.5rem;
     font-weight: 600;
+    text-align: center;
+    margin-bottom: 20px;
 }
 
-.dashboard-main-content {
-    padding: 24px;
-}
-
-
-/* ==========================================================================
-   Tabs Styling
-   ========================================================================== */
-.tab-wrapper-bar {
-    background-color: var(--card-background-color);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 24px;
-}
-
-.custom-styled-tabs {
+.sidebar hr {
     border: none;
+    border-top: 1px solid var(--sidebar-active-bg);
+    margin: 0 0 20px 0;
 }
 
-.custom-styled-tabs .dash-tab {
-    color: var(--text-color-light);
-    background-color: transparent;
-    border: none !important;
-    padding: 16px 20px !important;
+.nav-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-link {
+    color: var(--sidebar-text);
+    text-decoration: none;
+    padding: 12px 15px;
+    border-radius: var(--card-border-radius);
+    margin-bottom: 5px;
     font-weight: 500;
-    transition: all 0.2s ease-in-out;
+    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.custom-styled-tabs .dash-tab:hover {
-    color: var(--text-color-dark);
-    background-color: #f8f9fa;
+.nav-link:hover {
+    background-color: var(--sidebar-active-bg);
+    color: var(--sidebar-text-hover);
 }
 
-.custom-styled-tabs .dash-tab.dash-tab--selected {
-    color: var(--primary-color);
-    background-color: transparent;
-    box-shadow: inset 0 -2px 0 0 var(--primary-color);
+.nav-link.active {
+    background-color: var(--header-bg);
+    color: var(--sidebar-text-hover);
     font-weight: 600;
 }
 
 
 /* ==========================================================================
-   Card System
+   Main Content Area
+   ========================================================================== */
+.main-content {
+    flex-grow: 1;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--card-bg);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--card-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.content-header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.user-controls-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--content-bg);
+}
+
+.page-content-wrapper {
+    padding: 1.5rem;
+}
+
+
+/* ==========================================================================
+   Card, Grid, and KPI Styles (Re-used and adapted)
    ========================================================================== */
 .dashboard-card {
-    background-color: var(--card-background-color);
-    border: 1px solid var(--border-color);
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
     border-radius: var(--card-border-radius);
     box-shadow: var(--card-shadow);
-    margin-bottom: 24px;
-    padding: 24px;
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
 }
 
 .dashboard-card-header {
-    margin: -24px -24px 24px -24px;
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border-color);
+    margin: -1.5rem -1.5rem 1.5rem -1.5rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--card-border);
 }
 
 .dashboard-card h4 {
-    color: var(--text-color-dark);
     font-size: 1.1em;
     font-weight: 600;
     margin: 0;
-    padding-bottom: 0;
-    border-bottom: none;
 }
 
-/* Specific card types */
-.table-container {
-    padding: 0; /* Remove padding for tables to fit edge-to-edge */
-}
-.table-container .dash-table-container {
-    border: none;
-}
-.graph-container {
-    overflow: hidden;
-}
-.details-container {
-    word-wrap: break-word;
-}
-
-/* ==========================================================================
-   KPI Grid
-   ========================================================================== */
 .kpi-grid-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 24px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
 }
 
 .kpi-card {
-    background-color: var(--card-background-color);
+    background-color: var(--header-bg); /* Use accent color like the example */
+    color: white;
     padding: 20px;
     border-radius: var(--card-border-radius);
     box-shadow: var(--card-shadow);
-    border: 1px solid var(--border-color);
-    text-align: center;
+    text-align: right;
 }
 
-.kpi-card h5 { /* KPI Title */
+.kpi-card h5 {
     margin: 0 0 8px 0;
-    color: var(--text-color-light);
     font-size: 0.9em;
-    font-weight: 500;
+    font-weight: 400;
+    opacity: 0.9;
 }
 
-.kpi-card p { /* KPI Value */
+.kpi-card p {
     margin: 0;
-    color: var(--text-color-dark);
-    font-size: 2.2em;
-    font-weight: 600;
+    font-size: 2em;
+    font-weight: 700;
 }
 
 
 /* ==========================================================================
-   Form & Filter Elements
+   Form & Table Styles (Minor adjustments)
    ========================================================================== */
-.dashboard-card .form-element-wrapper {
-    margin-bottom: 16px;
+.form-element-wrapper { margin-bottom: 1rem; }
+.Select-control, .DateInput { border-radius: 4px; border-color: #ced4da; }
+
+#apply-filters-pc-button,
+#apply-filters-fc-button,
+#apply-filters-pm-button,
+#apply-filters-ha-button {
+    background-color: var(--sidebar-bg);
+    color: white; border: none; border-radius: 4px; padding: 10px 20px;
+    font-weight: 500; cursor: pointer; transition: background-color 0.2s ease;
+}
+#apply-filters-pc-button:hover,
+#apply-filters-fc-button:hover,
+#apply-filters-pm-button:hover,
+#apply-filters-ha-button:hover {
+    background-color: #495057;
 }
 
-.dashboard-card .DateInput_input, .dashboard-card .DateInput_input_1 {
-    font-family: var(--font-family);
-    font-size: 14px;
-}
-
-.dashboard-card .Select-control, .dashboard-card .select-control, 
-.dashboard-card .DateInput, .dashboard-card .DateInput_1 {
-    border-radius: 6px;
-    border-color: var(--border-color);
-}
-.dashboard-card .Select-control:hover, .dashboard-card .select-control:hover {
-    border-color: var(--primary-color);
-}
-
-
-.dashboard-card #apply-filters-pc-button,
-.dashboard-card #apply-filters-fc-button,
-.dashboard-card #apply-filters-pm-button,
-.dashboard-card #apply-filters-ha-button {
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 20px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.dashboard-card #apply-filters-pc-button:hover,
-.dashboard-card #apply-filters-fc-button:hover,
-.dashboard-card #apply-filters-pm-button:hover,
-.dashboard-card #apply-filters-ha-button:hover {
-    background-color: #357ABD; /* Darker blue on hover */
-}
-
-
-/* =is========================================================================
-   Data Table
-   ========================================================================== */
-.table-container .dash-header {
-    background-color: #f8f9fa;
-    color: var(--text-color-dark);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-color);
-}
-.table-container .dash-data-table {
-    border-top-left-radius: var(--card-border-radius);
-    border-top-right-radius: var(--card-border-radius);
-}
-.table-container .dash-cell {
-    padding: 12px;
-    border-color: var(--border-color) !important;
-}
-
-.table-container tr:last-of-type .dash-cell {
-     border-bottom: none !important;
-}
-
+.table-container .dash-header { background-color: #f8f9fa; border-bottom: 1px solid var(--card-border); }
+.table-container .dash-cell { padding: 12px; border-color: var(--card-border) !important; }
+.table-container tr:last-of-type .dash-cell { border-bottom: none !important; }
