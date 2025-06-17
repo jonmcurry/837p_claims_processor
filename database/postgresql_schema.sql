@@ -407,7 +407,7 @@ ALTER SYSTEM SET shared_buffers = '1GB';
 ALTER SYSTEM SET effective_cache_size = '3GB';
 ALTER SYSTEM SET work_mem = '16MB';
 ALTER SYSTEM SET maintenance_work_mem = '256MB';
-ALTER SYSTEM SET checkpoint_segments = 64;
+ALTER SYSTEM SET max_wal_size = '1GB';  -- Replaced deprecated checkpoint_segments
 ALTER SYSTEM SET wal_buffers = '16MB';
 ALTER SYSTEM SET default_statistics_target = 100;
 

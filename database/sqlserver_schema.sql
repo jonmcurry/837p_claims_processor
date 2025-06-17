@@ -440,7 +440,7 @@ GO
 -- Daily Processing Summary
 CREATE TABLE dbo.daily_processing_summary (
     summary_date DATE NOT NULL,
-    facility_id VARCHAR(20) NULL,
+    facility_id VARCHAR(20) NOT NULL,
     total_claims_processed INT NULL,
     total_claims_failed INT NULL,
     total_line_items INT NULL,
