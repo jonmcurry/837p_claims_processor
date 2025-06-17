@@ -819,7 +819,7 @@ def load_claims_data(session, facility_ids: List[str], provider_ids: List[str]):
                     "rvu_malpractice": Decimal(str(mp_rvu)),
                     "rvu_total": Decimal(str(total_rvu)),
                     "expected_reimbursement": expected_reimbursement,
-                    "diagnosis_pointers": [1, 2] if len(diagnosis_codes) > 1 else [1]
+                    "diagnosis_pointers": json.dumps([1, 2] if len(diagnosis_codes) > 1 else [1])
                 })
             
             # Expected reimbursement for claim (sum of line items)
@@ -1070,7 +1070,7 @@ def load_claims_data_postgresql_only(session):
                     "rvu_malpractice": Decimal(str(mp_rvu)),
                     "rvu_total": Decimal(str(total_rvu)),
                     "expected_reimbursement": expected_reimbursement,
-                    "diagnosis_pointers": [1, 2] if len(diagnosis_codes_list) > 1 else [1]
+                    "diagnosis_pointers": json.dumps([1, 2] if len(diagnosis_codes_list) > 1 else [1])
                 })
             
             # Expected reimbursement for claim (sum of line items)
