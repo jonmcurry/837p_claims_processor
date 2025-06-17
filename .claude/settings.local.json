@@ -18,7 +18,8 @@
       "Bash(sudo apt:*)",
       "Bash(sudo apt install:*)",
       "Bash(ls:*)",
-      "Bash(./scripts/example_usage.sh:*)"
+      "Bash(./scripts/example_usage.sh:*)",
+      "Bash(pip3 install:*)"
     ],
     "deny": []
   }
