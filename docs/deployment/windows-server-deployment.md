@@ -143,8 +143,7 @@ git clone https://github.com/jonmcurry/837p_claims_processor.git app
 Set-Location "$appRoot\app"
 
 # Create Python virtual environment
-python -m venv "$appRoot\venv"
-& "$appRoot\venv\Scripts\Activate.ps1"
+python -m venv "$appRoot\venv"; & "$appRoot\venv\Scripts\Activate.ps1"
 
 # Install Python dependencies
 python -m pip install --upgrade pip setuptools wheel
