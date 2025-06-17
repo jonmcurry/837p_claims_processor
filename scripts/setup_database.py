@@ -236,10 +236,9 @@ class DatabaseSetup:
                 if skip_until_go:
                     continue
                     
-                # Skip USE database statement
+                # Skip USE database statement and its GO
                 if line.strip().startswith('USE smart_pro_claims'):
-                    continue
-                if line.strip() == 'GO' and len(filtered_lines) > 0 and filtered_lines[-1].strip().startswith('USE'):
+                    skip_until_go = True
                     continue
                     
                 # Skip filegroup creation that requires specific paths
@@ -261,6 +260,12 @@ class DatabaseSetup:
                     line = line.replace('ON ClaimsDatePartitionScheme(operation_timestamp)', '')
                     line = line.replace('ON ClaimsDatePartitionScheme(access_timestamp)', '')
                     line = line.replace('ON ClaimsDatePartitionScheme(metric_date)', '')
+                
+                # Ensure GO statements before stored procedures/functions
+                if ('CREATE PROCEDURE' in line or 'CREATE FUNCTION' in line) and len(filtered_lines) > 0:
+                    last_line = filtered_lines[-1].strip() if filtered_lines else ''
+                    if last_line != 'GO' and last_line != '':
+                        filtered_lines.append('GO')
                 
                 filtered_lines.append(line)
             
