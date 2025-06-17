@@ -392,12 +392,16 @@ class DatabaseSetup:
         
         try:
             console.print(f"[blue]Running: {' '.join(cmd[:3])} --connection-string [REDACTED][/blue]")
-            result = subprocess.run(cmd, check=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             console.print("[green]✓ Sample data loaded successfully[/green]")
             return True
             
         except subprocess.CalledProcessError as e:
             console.print(f"[red]Error loading sample data: {e}[/red]")
+            if e.stdout:
+                console.print(f"[yellow]stdout: {e.stdout}[/yellow]")
+            if e.stderr:
+                console.print(f"[yellow]stderr: {e.stderr}[/yellow]")
             return False
 
     def show_summary(self):
