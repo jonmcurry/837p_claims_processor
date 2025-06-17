@@ -46,7 +46,7 @@ class DatabaseSetup:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.project_root = Path(__file__).parent.parent
-        self.postgres_schema_path = self.project_root / "database" / "postgresql_schema.sql"
+        self.postgres_schema_path = self.project_root / "database" / "postgresql_claims_processing_schema.sql"
         self.sqlserver_schema_path = self.project_root / "database" / "sqlserver_schema.sql"
         self.sample_data_script = self.project_root / "scripts" / "load_sample_data.py"
 
