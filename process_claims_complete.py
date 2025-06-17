@@ -96,7 +96,7 @@ def load_processing_config():
     # These could also come from env vars if needed
     return {
         'processing': {
-            'batch_size': 1000,
+            'batch_size': 100000,  # Process all claims instead of limiting to 1000
             'conversion_factor': 38.87,
             'enable_ml_predictions': True,
             'ml_confidence_threshold': 0.85
@@ -250,8 +250,7 @@ class ClaimsProcessor:
             rules = self.get_validation_rules(pg_cursor)
             print(f"Loaded {len(rules)} validation rules")
             
-            # Get pending claims
-            batch_size = self.config.get('processing', {}).get('batch_size', 1000)
+            # Get ALL pending claims (no batch size limit)
             pg_cursor.execute("""
                 SELECT 
                     c.id, c.claim_id, c.facility_id, c.patient_account_number,
@@ -265,8 +264,7 @@ class ClaimsProcessor:
                 FROM claims c
                 WHERE c.processing_status = 'pending'
                 ORDER BY c.priority DESC, c.created_at ASC
-                LIMIT %s  -- Process in batches from config
-            """, (batch_size,))
+            """)
             
             claims = pg_cursor.fetchall()
             self.stats['total'] = len(claims)
@@ -699,7 +697,7 @@ def main():
     config = load_processing_config()
     
     print(f"Configuration loaded from: {args.env}")
-    print(f"Batch size: {config.get('processing', {}).get('batch_size', 1000)}")
+    print(f"Processing mode: ALL pending claims (no batch limit)")
     print(f"Conversion factor: ${config.get('processing', {}).get('conversion_factor', 38.87)}")
     print(f"Environment: {env_vars.get('ENVIRONMENT', 'development') if 'env_vars' in locals() else 'custom'}")
     
