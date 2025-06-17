@@ -8,7 +8,7 @@ The PostgreSQL database is now focused solely on **claims processing**, not refe
 
 ### PostgreSQL (`claims_staging`)
 - **Purpose**: Claims processing workflow
-- **Contains**: Claims, line items, batch metadata, processing rules
+- **Contains**: Claims, line items, batch metadata, processing rules, RVU data
 - **References**: Facility and provider data stored in SQL Server
 - **Schema**: `postgresql_claims_processing_schema.sql`
 
@@ -26,7 +26,7 @@ The PostgreSQL database is now focused solely on **claims processing**, not refe
 
 ### 2. Streamlined PostgreSQL Schema
 - **Removed**: `facilities` and `providers` tables
-- **Kept**: `claims`, `claim_line_items`, `batch_metadata`, `rvu_data`, `validation_rules`
+- **Kept**: `claims`, `claim_line_items`, `batch_metadata`, `rvu_data` (matched to SQL Server schema), `validation_rules`
 - **Focus**: Processing-specific tables only
 
 ### 3. Updated Sample Data Loading
@@ -55,13 +55,25 @@ INSERT INTO providers (npi, provider_name, ...)
 INSERT INTO claims (facility_id, ...)  -- With FK constraints
 ```
 
+## RVU Data Strategy
+
+**Why RVU data is in both databases:**
+- **PostgreSQL**: Needed for real-time claims processing calculations
+- **SQL Server**: Needed for analytics and reporting
+- **Schema**: Identical structure between both databases to maintain consistency
+
+RVU data is essential for claims processing as it's used to:
+- Calculate expected reimbursements
+- Validate procedure code values
+- Perform real-time pricing calculations
+
 ## Benefits
 
-1. **No Schema Conflicts**: Different schemas for different purposes
+1. **No Schema Conflicts**: Different schemas for different purposes (except RVU which matches)
 2. **Single Source of Truth**: Facilities/providers only in SQL Server
-3. **Simplified Maintenance**: No need to sync reference data
+3. **Processing Performance**: RVU data local to PostgreSQL for fast calculations
 4. **Clear Separation**: Processing vs analytics databases
-5. **Better Performance**: PostgreSQL optimized for claims processing only
+5. **Better Performance**: PostgreSQL optimized for claims processing workflow
 
 ## Usage
 

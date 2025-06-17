@@ -20,19 +20,28 @@ CREATE TYPE failure_category AS ENUM (
 
 CREATE TYPE claim_priority AS ENUM ('low', 'medium', 'high', 'critical');
 
--- RVU lookup table for procedure codes (processing reference data)
+-- RVU lookup table for procedure codes (matches SQL Server schema)
 CREATE TABLE rvu_data (
-    id SERIAL PRIMARY KEY,
-    procedure_code VARCHAR(10) NOT NULL,
-    modifier VARCHAR(2),
-    year INTEGER NOT NULL,
-    work_rvu DECIMAL(8,4) NOT NULL,
-    practice_expense_rvu DECIMAL(8,4) NOT NULL,
-    malpractice_rvu DECIMAL(8,4) NOT NULL,
-    total_rvu DECIMAL(8,4) NOT NULL,
-    conversion_factor DECIMAL(8,4) DEFAULT 36.04,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    procedure_code VARCHAR(10) NOT NULL PRIMARY KEY,
+    description VARCHAR(500),
+    category VARCHAR(50),
+    subcategory VARCHAR(50),
+    work_rvu DECIMAL(8,4),
+    practice_expense_rvu DECIMAL(8,4),
+    malpractice_rvu DECIMAL(8,4),
+    total_rvu DECIMAL(8,4),
+    conversion_factor DECIMAL(8,2),
+    non_facility_pe_rvu DECIMAL(8,4),
+    facility_pe_rvu DECIMAL(8,4),
+    effective_date DATE,
+    end_date DATE,
+    status VARCHAR(20),
+    global_period VARCHAR(10),
+    professional_component BOOLEAN,
+    technical_component BOOLEAN,
+    bilateral_surgery BOOLEAN,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Business validation rules
@@ -330,7 +339,8 @@ CREATE INDEX idx_performance_metrics_type_time ON performance_metrics(metric_typ
 CREATE INDEX idx_performance_metrics_service ON performance_metrics(service_name, recorded_at);
 
 -- RVU data indexes
-CREATE INDEX CONCURRENTLY idx_rvu_data_procedure_year ON rvu_data(procedure_code, year);
+CREATE INDEX CONCURRENTLY idx_rvu_data_status ON rvu_data(status, procedure_code);
+CREATE INDEX CONCURRENTLY idx_rvu_data_category ON rvu_data(category, subcategory);
 
 -- Composite indexes for complex queries
 CREATE INDEX CONCURRENTLY idx_claims_composite_processing 
