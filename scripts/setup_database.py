@@ -273,6 +273,13 @@ class DatabaseSetup:
                 
                 filtered_lines.append(line)
             
+            # Add schema fixes for column size issues
+            filtered_lines.append('GO')
+            filtered_lines.append('')
+            filtered_lines.append('-- Fix column sizes for data loading')
+            filtered_lines.append('ALTER TABLE dbo.facility_place_of_service ALTER COLUMN place_of_service_name VARCHAR(60) NOT NULL;')
+            filtered_lines.append('GO')
+            
             # Create a temporary schema file
             temp_schema_path = self.project_root / "temp_sqlserver_schema.sql"
             temp_schema_path.write_text('\n'.join(filtered_lines), encoding='utf-8')

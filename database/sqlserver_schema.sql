@@ -198,7 +198,7 @@ GO
 CREATE TABLE dbo.facility_place_of_service (
     facility_id VARCHAR(20) NOT NULL,
     place_of_service VARCHAR(2) NOT NULL,
-    place_of_service_name VARCHAR(30) NOT NULL,
+    place_of_service_name VARCHAR(60) NOT NULL,
     origin INT NULL,
     active BIT NOT NULL DEFAULT 1,
     created_at DATETIME2(7) NOT NULL DEFAULT GETUTCDATE(),
