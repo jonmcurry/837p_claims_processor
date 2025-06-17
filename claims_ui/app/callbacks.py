@@ -3,6 +3,7 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import pandas as pd
 import plotly.express as px
+from datetime import date
 
 # --- Layout Imports ---
 from .layouts.processed_claims_layout import create_processed_claims_layout
@@ -11,20 +12,9 @@ from .layouts.processing_metrics_layout import create_processing_metrics_layout
 from .layouts.healthcare_analytics_layout import create_healthcare_analytics_layout
 
 # --- Data Query Imports ---
-# Make sure these paths are correct for your project structure
-from .queries.claims_queries import (
-    get_processed_claims, get_failed_claims, # 'get_claim_details' REMOVED as it's not needed
-    get_payer_options, get_facility_options, get_failure_category_options
-)
-from .queries.metrics_queries import (
-    get_kpi_data, get_daily_trends, get_facility_comparison, 
-    get_payer_distribution, get_claim_type_distribution
-)
-from .queries.analytics_queries import (
-    get_top_cpt_codes, get_top_dx_codes, get_payer_analysis,
-    get_patient_demographics, get_provider_metrics
-)
-
+# CORRECTED: Only importing modules that exist to prevent import errors.
+# We will use placeholder data in the callbacks instead of calling functions from here for now.
+from .queries import claims_queries, metrics_queries
 
 def register_callbacks(app):
     """Registers all callbacks for the application."""
@@ -46,7 +36,6 @@ def register_callbacks(app):
             return create_failed_claims_layout(), "Failed Claims"
         elif pathname == '/analytics':
             return create_healthcare_analytics_layout(), "Healthcare Analytics"
-        # Default to processing metrics for the root URL
         return create_processing_metrics_layout(), "Processing Metrics"
 
     @app.callback(
@@ -55,23 +44,33 @@ def register_callbacks(app):
     )
     def update_active_links(pathname):
         """Updates the 'active' className for the current page's sidebar link."""
-        links_mapping = {
-            "/": "home",
-            "/analytics": "analytics",
-            "/processed": "processed",
-            "/failed": "failed"
-        }
+        links_mapping = {"/": "home", "/analytics": "analytics", "/processed": "processed", "/failed": "failed"}
         class_names = {page: "nav-link" for page in links_mapping.values()}
         current_page = links_mapping.get(pathname)
         if current_page:
             class_names[current_page] = "nav-link active"
-        
-        # Ensure the order matches the list of Outputs
         return [class_names["home"], class_names["analytics"], class_names["processed"], class_names["failed"]]
 
+    # =========================================================================
+    # Dropdown Population Callbacks
+    # =========================================================================
+    
+    @app.callback(
+        [Output('facility-filter-pc', 'options'),
+         Output('payer-filter-pc', 'options'),
+         Output('facility-filter-pm', 'options'),
+         Output('facility-filter-ha', 'options')],
+        [Input('url', 'pathname')]
+    )
+    def populate_all_filters(pathname):
+        """Populates all dropdowns with placeholder data when the app loads."""
+        facility_options = [{'label': 'Main General Hospital', 'value': 'fac-1'}, {'label': 'Downtown Clinic', 'value': 'fac-2'}]
+        payer_options = [{'label': 'Blue Shield', 'value': 'pay-1'}, {'label': 'United Health', 'value': 'pay-2'}]
+        # This will populate dropdowns on all pages as they share some filter IDs
+        return facility_options, payer_options, facility_options, facility_options
 
     # =========================================================================
-    # Processing Metrics Page Callbacks
+    # Processing Metrics Page Callbacks (Main Dashboard)
     # =========================================================================
 
     @app.callback(
@@ -80,55 +79,44 @@ def register_callbacks(app):
          Output('facility-comparison-graph-pm', 'figure'),
          Output('payer-distribution-graph-pm', 'figure'),
          Output('claim-type-distribution-graph-pm', 'figure')],
-        [Input('apply-filters-pm-button', 'n_clicks')],
-        [State('date-picker-range-pm', 'start_date'),
-         State('date-picker-range-pm', 'end_date'),
-         State('facility-filter-pm', 'value')]
+        [Input('url', 'pathname'), # *** ADDED THIS INPUT TO TRIGGER ON PAGE LOAD ***
+         Input('apply-filters-pm-button', 'n_clicks')]
     )
-    def update_processing_metrics(n_clicks, start_date, end_date, facility_ids):
-        """Updates all components on the processing metrics tab."""
-        if n_clicks is None:
-            raise PreventUpdate # Don't run on initial load
-
+    def update_processing_metrics(pathname, n_clicks):
+        """Updates all components on the processing metrics tab with placeholder data."""
+        # This will now run when the page loads to '/' or when the button is clicked.
+        
         # 1. KPI Cards
-        kpi_data = get_kpi_data(start_date, end_date, facility_ids)
+        kpi_data = [
+            {'name': 'Total Claims Processed', 'value': 12245},
+            {'name': 'Total Billed Amount', 'value': '3.2M'},
+            {'name': 'Acceptance Rate', 'value': '92%'},
+            {'name': 'Avg. Processing Time', 'value': '1.8d'}
+        ]
         kpi_cards = [
-            html.Div([
-                html.H5(kpi['name']),
-                html.P(f"{kpi.get('value', 0):,}")
-            ], className='kpi-card') for kpi in kpi_data
+            html.Div([html.H5(kpi['name']), html.P(kpi['value'])], className='kpi-card') for kpi in kpi_data
         ]
 
         # 2. Daily Trends Graph
-        daily_trends_df = get_daily_trends(start_date, end_date, facility_ids)
-        daily_trends_fig = px.line(
-            daily_trends_df, x='date', y='claims_processed',
-            title='Daily Claims Processing Volume', template='plotly_white'
-        )
+        trends_df = pd.DataFrame({
+            'date': pd.to_datetime(['2023-05-01', '2023-05-02', '2023-05-03', '2023-05-04', '2023-05-05', '2023-05-06', '2023-05-07']),
+            'claims_processed': [250, 310, 280, 350, 400, 380, 410]
+        })
+        daily_trends_fig = px.area(trends_df, x='date', y='claims_processed', title='Daily Claims Volume').update_layout(template='plotly_white')
 
         # 3. Facility Comparison Graph
-        facility_comp_df = get_facility_comparison(start_date, end_date, facility_ids)
-        facility_comp_fig = px.bar(
-            facility_comp_df, x='facility_name', y='total_billed_amount',
-            title='Billed Amount by Facility', template='plotly_white'
-        )
+        facility_df = pd.DataFrame({'Facility': ['Main General', 'Downtown Clinic', 'Uptown Medical'], 'Billed Amount': [1800000, 1400000, 950000]})
+        facility_comp_fig = px.bar(facility_df, x='Facility', y='Billed Amount', title='Billed Amount by Facility').update_layout(template='plotly_white')
         
         # 4. Payer Distribution Graph
-        payer_dist_df = get_payer_distribution(start_date, end_date, facility_ids)
-        payer_dist_fig = px.pie(
-            payer_dist_df, names='payer_name', values='claim_count',
-            title='Claim Distribution by Payer', hole=0.4, template='plotly_white'
-        )
+        payer_df = pd.DataFrame({'Payer': ['Blue Shield', 'United Health', 'Aetna', 'Cigna'], 'Claims': [5000, 4500, 2745, 1900]})
+        payer_dist_fig = px.pie(payer_df, names='Payer', values='Claims', title='Claims by Payer', hole=0.4).update_layout(template='plotly_white')
 
         # 5. Claim Type Distribution
-        claim_type_df = get_claim_type_distribution(start_date, end_date, facility_ids)
-        claim_type_fig = px.bar(
-            claim_type_df, x='claim_type', y='count',
-            title='Professional vs. Institutional Claims', template='plotly_white'
-        )
+        type_df = pd.DataFrame({'Claim Type': ['Professional', 'Institutional'], 'Count': [8500, 3745]})
+        claim_type_fig = px.bar(type_df, x='Count', y='Claim Type', orientation='h', title='Claim Types').update_layout(template='plotly_white')
 
         return kpi_cards, daily_trends_fig, facility_comp_fig, payer_dist_fig, claim_type_fig
-
 
     # =========================================================================
     # Processed Claims Page Callbacks
@@ -136,18 +124,16 @@ def register_callbacks(app):
 
     @app.callback(
         Output('processed-claims-table', 'data'),
-        [Input('apply-filters-pc-button', 'n_clicks')],
-        [State('facility-filter-pc', 'value'),
-         State('payer-filter-pc', 'value'),
-         State('date-picker-range-pc', 'start_date'),
-         State('date-picker-range-pc', 'end_date')]
+        [Input('apply-filters-pc-button', 'n_clicks')]
     )
-    def update_processed_claims_table(n_clicks, facilities, payers, start_date, end_date):
-        """Fetches and displays processed claims data in the table."""
+    def update_processed_claims_table(n_clicks):
         if n_clicks is None:
-            raise PreventUpdate
-        claims_data = get_processed_claims(facilities, payers, start_date, end_date)
-        return claims_data
+            return [] # Return an empty list initially
+        placeholder_data = [
+            {'claim_id': 'C-001', 'patient_name': 'John Smith', 'total_billed_amount': 550.75, 'total_paid_amount': 450.00, 'payer_name': 'Blue Shield', 'claim_status': 'Paid'},
+            {'claim_id': 'C-002', 'patient_name': 'Jane Doe', 'total_billed_amount': 1200.00, 'total_paid_amount': 950.00, 'payer_name': 'United Health', 'claim_status': 'Paid'},
+        ]
+        return placeholder_data
     
     @app.callback(
         Output('selected-claim-details-pc', 'children'),
@@ -155,20 +141,9 @@ def register_callbacks(app):
         [State('processed-claims-table', 'data')]
     )
     def display_claim_details(active_cell, rows):
-        """
-        Displays details of the selected claim from the table's existing data,
-        without requiring a new database query.
-        """
         if not active_cell or not rows:
             return html.Div([html.H4("Claim Details"), html.P("Select a claim to see details.")])
-        
-        # Get the data for the selected row from the existing table data
         selected_row_data = rows[active_cell['row']]
-        
-        if not selected_row_data:
-            return html.Div([html.H4("Claim Details"), html.P("Could not find details for the selected claim.")])
-            
-        # Build the details layout from the row data
         details_layout = [
             html.H4("Claim Details"),
             html.P(f"Claim ID: {selected_row_data.get('claim_id', 'N/A')}"),
@@ -180,15 +155,6 @@ def register_callbacks(app):
         ]
         return html.Div(details_layout)
 
-
-    # =========================================================================
-    # Failed Claims Page Callbacks
-    # =================================e========================================
-    
-    # (Placeholder for failed claims callbacks - they would follow a similar pattern)
-    # ...
-
-
     # =========================================================================
     # Healthcare Analytics Page Callbacks
     # =========================================================================
@@ -196,26 +162,21 @@ def register_callbacks(app):
     @app.callback(
         Output('healthcare-analytics-content', 'children'),
         [Input('healthcare-analytics-subtabs', 'value'),
-         Input('apply-filters-ha-button', 'n_clicks')],
-        [State('date-picker-range-ha', 'start_date'),
-         State('date-picker-range-ha', 'end_date'),
-         State('facility-filter-ha', 'value'),
-         State('top-n-filter-ha', 'value')]
+         Input('apply-filters-ha-button', 'n_clicks')]
     )
-    def render_analytics_content(subtab, n_clicks, start_date, end_date, facility_ids, top_n):
-        """Renders the content for the selected analytics sub-tab."""
+    def render_analytics_content(subtab, n_clicks):
         if n_clicks is None:
-            return html.P("Apply filters to see analytics content.")
-
+            return html.P("Apply filters to see analytics content.", style={'padding': '20px'})
+            
         if subtab == 'subtab-cpt':
-            df = get_top_cpt_codes(start_date, end_date, facility_ids, top_n)
-            fig = px.bar(df, x='cpt_code', y='count', title=f'Top {top_n} CPT Codes')
+            df = pd.DataFrame({'cpt_code': ['99213', '99214', '99396', '99203', '99212'], 'count': [500, 420, 310, 250, 180]})
+            fig = px.bar(df, x='cpt_code', y='count', title=f'Top 5 CPT Codes').update_layout(template='plotly_white')
             return dcc.Graph(figure=fig)
         elif subtab == 'subtab-dx':
-            df = get_top_dx_codes(start_date, end_date, facility_ids, top_n)
-            fig = px.bar(df, x='dx_code', y='count', title=f'Top {top_n} Diagnosis Codes')
+            df = pd.DataFrame({'dx_code': ['I10', 'E11.9', 'Z00.00', 'K21.9', 'M54.5'], 'count': [610, 550, 480, 320, 290]})
+            fig = px.bar(df, x='dx_code', y='count', title=f'Top 5 Diagnosis Codes').update_layout(template='plotly_white')
             return dcc.Graph(figure=fig)
         
-        return html.P(f"Content for {subtab}")
+        return html.P(f"Placeholder content for {subtab}", style={'padding': '20px'})
         
     print("Callbacks registered successfully.")
