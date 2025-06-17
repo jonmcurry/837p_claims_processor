@@ -3,15 +3,17 @@
 Database Setup Script for Smart Pro Claims
 
 This script:
-1. Checks if PostgreSQL and SQL Server databases exist
-2. Creates databases if they don't exist
-3. Loads the appropriate schema
-4. Loads sample data
+1. Reads database configuration from config/.env.example
+2. Checks if PostgreSQL and SQL Server databases exist
+3. Creates databases if they don't exist
+4. Loads the appropriate schema
+5. Loads sample data
 
 Usage:
-    python scripts/setup_database.py --postgres-host localhost --postgres-user postgres --postgres-password password
-    python scripts/setup_database.py --sqlserver-host localhost --sqlserver-user sa --sqlserver-password password
-    python scripts/setup_database.py --postgres-host localhost --sqlserver-host localhost --integrated-auth
+    python scripts/setup_database.py                    # Uses config/.env.example
+    python scripts/setup_database.py --env config/.env  # Uses specific env file
+    python scripts/setup_database.py --postgres-only    # Setup only PostgreSQL
+    python scripts/setup_database.py --sqlserver-only   # Setup only SQL Server
 """
 
 import argparse
@@ -42,6 +44,79 @@ from rich.table import Table
 
 console = Console()
 
+def load_env_file(env_path='config/.env'):
+    """Load environment variables from .env file."""
+    env_vars = {}
+    
+    # First try the provided path
+    if not os.path.exists(env_path):
+        # Try .env.example if .env doesn't exist
+        if os.path.exists('config/.env.example'):
+            env_path = 'config/.env.example'
+            console.print(f"[yellow]⚠️  Using .env.example - copy to .env for production use[/yellow]")
+        else:
+            console.print(f"[red]❌ Environment file '{env_path}' not found![/red]")
+            return None
+    
+    try:
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip comments and empty lines
+                if line and not line.startswith('#'):
+                    # Split on first = only
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key.strip()] = value.strip()
+        return env_vars
+    except Exception as e:
+        console.print(f"[red]❌ Error loading env file: {e}[/red]")
+        return None
+
+def build_config_from_env(env_vars, postgres_only=False, sqlserver_only=False):
+    """Build configuration from environment variables."""
+    config = {}
+    
+    # PostgreSQL configuration
+    if not sqlserver_only:
+        config['setup_postgres'] = True
+        config['postgres_host'] = env_vars.get('POSTGRES_HOST', 'localhost')
+        config['postgres_port'] = int(env_vars.get('POSTGRES_PORT', '5432'))
+        config['postgres_user'] = env_vars.get('POSTGRES_USER', 'postgres')
+        config['postgres_password'] = env_vars.get('POSTGRES_PASSWORD', '')
+        
+        # Use claims_staging for processing workflow
+        pg_db = env_vars.get('POSTGRES_DB', 'claims_processor_dev')
+        if pg_db == 'claims_processor_dev':
+            pg_db = 'claims_staging'
+            console.print(f"[blue]📝 Note: Using 'claims_staging' database for PostgreSQL[/blue]")
+        config['postgres_database'] = pg_db
+    else:
+        config['setup_postgres'] = False
+    
+    # SQL Server configuration
+    if not postgres_only:
+        config['setup_sqlserver'] = True
+        config['sqlserver_host'] = env_vars.get('SQLSERVER_HOST', 'localhost')
+        config['sqlserver_user'] = env_vars.get('SQLSERVER_USER', 'sa')
+        config['sqlserver_password'] = env_vars.get('SQLSERVER_PASSWORD', '')
+        config['sqlserver_integrated_auth'] = False  # Use SQL auth from env
+        
+        # Use smart_pro_claims for analytics
+        ss_db = env_vars.get('SQLSERVER_DB', 'claims_analytics_dev')
+        if ss_db == 'claims_analytics_dev':
+            ss_db = 'smart_pro_claims'
+            console.print(f"[blue]📝 Note: Using 'smart_pro_claims' database for SQL Server[/blue]")
+        config['sqlserver_database'] = ss_db
+    else:
+        config['setup_sqlserver'] = False
+    
+    # General settings
+    config['load_sample_data'] = True
+    config['skip_claims_data'] = False
+    
+    return config
+
 class DatabaseSetup:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -54,7 +129,8 @@ class DatabaseSetup:
         """Display startup banner"""
         console.print(Panel.fit(
             "[bold cyan]Smart Pro Claims Database Setup[/bold cyan]\n"
-            "[dim]Automated database creation, schema loading, and sample data generation[/dim]",
+            "[dim]Automated database creation, schema loading, and sample data generation[/dim]\n"
+            "[dim]Reading configuration from config/.env.example[/dim]",
             border_style="cyan"
         ))
 
@@ -368,7 +444,7 @@ class DatabaseSetup:
         return self.load_sqlserver_schema(db_name)
 
     def load_sample_data(self) -> bool:
-        """Load sample data using the existing script"""
+        """Load sample data using the modified load_sample_data.py script"""
         if not self.config.get('load_sample_data', True):
             console.print("[yellow]Skipping sample data loading[/yellow]")
             return True
@@ -379,37 +455,30 @@ class DatabaseSetup:
             console.print(f"[red]Sample data script not found: {self.sample_data_script}[/red]")
             return False
         
-        # Build connection string for sample data loader
         # PRIORITY: Use PostgreSQL for claims processing workflow when available
         if self.config.get('setup_postgres'):
-            # PostgreSQL database name should be 'claims_staging' for the processing workflow
             postgres_db = self.config.get('postgres_database', 'claims_staging')
-            conn_str = f"postgresql://{self.config['postgres_user']}:{self.config['postgres_password']}@{self.config['postgres_host']}:{self.config['postgres_port']}/{postgres_db}"
             console.print(f"[green]>>> LOADING CLAIMS INTO POSTGRESQL: {postgres_db}[/green]")
             console.print("[blue]Claims will be loaded into public.claims table for processing workflow[/blue]")
         elif self.config.get('setup_sqlserver'):
-            if self.config.get('sqlserver_integrated_auth'):
-                conn_str = f"mssql+pyodbc://{self.config['sqlserver_host']}/{self.config.get('sqlserver_database', 'smart_pro_claims')}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
-            else:
-                conn_str = f"mssql+pyodbc://{self.config['sqlserver_user']}:{self.config['sqlserver_password']}@{self.config['sqlserver_host']}/{self.config.get('sqlserver_database', 'smart_pro_claims')}?driver=ODBC+Driver+17+for+SQL+Server"
-            console.print(f"[yellow]>>> LOADING CLAIMS INTO SQL SERVER: {self.config.get('sqlserver_database', 'smart_pro_claims')}[/yellow]")
-            console.print("[dim]Note: For claims processing workflow, use PostgreSQL instead[/dim]")
+            console.print(f"[yellow]>>> SQL Server configured but sample claims loader focuses on PostgreSQL[/yellow]")
+            console.print("[dim]Note: For claims processing workflow, setup PostgreSQL as well[/dim]")
+            return True  # Skip sample data for SQL Server only setup
         else:
             console.print("[red]No database configured for sample data loading[/red]")
             return False
         
-        # Run sample data loader
+        # Run sample data loader (it will read from config/.env.example automatically)
         cmd = [
             sys.executable,
-            str(self.sample_data_script),
-            '--connection-string', conn_str
+            str(self.sample_data_script)
         ]
         
         if self.config.get('skip_claims_data'):
             cmd.append('--skip-claims')
         
         try:
-            console.print(f"[blue]Running: {' '.join(cmd[:3])} --connection-string [REDACTED][/blue]")
+            console.print(f"[blue]Running: {' '.join(cmd)} (reads config/.env.example automatically)[/blue]")
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             console.print("[green]✓ Sample data loaded successfully[/green]")
             return True
@@ -473,77 +542,100 @@ class DatabaseSetup:
                 success = False
         
         if success:
-            console.print("\n[bold green] Database setup completed successfully![/bold green]")
+            console.print("\n[bold green]🎉 Database setup completed successfully![/bold green]")
             self.show_summary()
         else:
-            console.print("\n[bold red] Database setup failed[/bold red]")
+            console.print("\n[bold red]❌ Database setup failed[/bold red]")
         
         return success
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Setup Smart Pro Claims databases with schema and sample data",
+        description="Setup Smart Pro Claims databases using config/.env.example",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Setup PostgreSQL for claims processing (RECOMMENDED)
-  python scripts/setup_database.py --postgres-host localhost --postgres-user claims_user --postgres-password mypassword
+  # Setup both databases using config/.env.example (RECOMMENDED)
+  python scripts/setup_database.py
   
-  # Setup PostgreSQL with custom database name
-  python scripts/setup_database.py --postgres-host localhost --postgres-user claims_user --postgres-password mypass --postgres-database my_claims_staging
+  # Setup only PostgreSQL for claims processing
+  python scripts/setup_database.py --postgres-only
   
-  # Setup SQL Server only (for analytics/reporting)
-  python scripts/setup_database.py --sqlserver-host localhost --integrated-auth
+  # Setup only SQL Server for analytics/reporting  
+  python scripts/setup_database.py --sqlserver-only
   
-  # Setup both databases (PostgreSQL for processing, SQL Server for analytics)
-  python scripts/setup_database.py --postgres-host localhost --postgres-user claims_user --postgres-password pg_pass --sqlserver-host localhost --sqlserver-user sa --sqlserver-password sql_pass
+  # Use custom environment file
+  python scripts/setup_database.py --env config/.env
+  
+  # Skip sample data loading
+  python scripts/setup_database.py --skip-sample-data
         """
     )
     
-    # PostgreSQL options
-    parser.add_argument('--postgres-host', help='PostgreSQL host')
-    parser.add_argument('--postgres-port', type=int, default=5432, help='PostgreSQL port (default: 5432)')
-    parser.add_argument('--postgres-user', help='PostgreSQL username')
-    parser.add_argument('--postgres-password', help='PostgreSQL password')
-    parser.add_argument('--postgres-database', default='claims_staging', help='PostgreSQL database name (default: claims_staging)')
+    # Environment configuration
+    parser.add_argument(
+        '--env', 
+        default='config/.env',
+        help='Environment file path (default: config/.env, fallback: config/.env.example)'
+    )
     
-    # SQL Server options
-    parser.add_argument('--sqlserver-host', help='SQL Server host')
-    parser.add_argument('--sqlserver-user', help='SQL Server username')
-    parser.add_argument('--sqlserver-password', help='SQL Server password')
-    parser.add_argument('--sqlserver-database', default='smart_pro_claims', help='SQL Server database name (default: smart_pro_claims)')
-    parser.add_argument('--integrated-auth', action='store_true', help='Use Windows integrated authentication for SQL Server')
+    # Database selection options
+    parser.add_argument(
+        '--postgres-only', 
+        action='store_true', 
+        help='Setup only PostgreSQL database (for claims processing)'
+    )
+    parser.add_argument(
+        '--sqlserver-only', 
+        action='store_true', 
+        help='Setup only SQL Server database (for analytics/reporting)'
+    )
     
     # General options
-    parser.add_argument('--skip-sample-data', action='store_true', help='Skip loading sample data')
-    parser.add_argument('--skip-claims-data', action='store_true', help='Skip loading claims data (configuration only)')
+    parser.add_argument(
+        '--skip-sample-data', 
+        action='store_true', 
+        help='Skip loading sample data'
+    )
+    parser.add_argument(
+        '--skip-claims-data', 
+        action='store_true', 
+        help='Skip loading claims data (configuration only)'
+    )
     
     args = parser.parse_args()
     
-    # Validate arguments
-    setup_postgres = bool(args.postgres_host and args.postgres_user and args.postgres_password)
-    setup_sqlserver = bool(args.sqlserver_host and (args.integrated_auth or (args.sqlserver_user and args.sqlserver_password)))
+    # Validate conflicting options
+    if args.postgres_only and args.sqlserver_only:
+        parser.error("Cannot specify both --postgres-only and --sqlserver-only")
     
-    if not setup_postgres and not setup_sqlserver:
-        parser.error("Must specify either PostgreSQL or SQL Server connection details")
+    # Load environment configuration
+    env_vars = load_env_file(args.env)
+    if not env_vars:
+        console.print("[red]❌ Failed to load environment configuration. Exiting.[/red]")
+        console.print("[yellow]   Make sure config/.env exists (copy from config/.env.example)[/yellow]")
+        sys.exit(1)
     
-    config = {
-        'setup_postgres': setup_postgres,
-        'setup_sqlserver': setup_sqlserver,
-        'postgres_host': args.postgres_host,
-        'postgres_port': args.postgres_port,
-        'postgres_user': args.postgres_user,
-        'postgres_password': args.postgres_password,
-        'postgres_database': args.postgres_database,
-        'sqlserver_host': args.sqlserver_host,
-        'sqlserver_user': args.sqlserver_user,
-        'sqlserver_password': args.sqlserver_password,
-        'sqlserver_database': args.sqlserver_database,
-        'sqlserver_integrated_auth': args.integrated_auth,
-        'load_sample_data': not args.skip_sample_data,
-        'skip_claims_data': args.skip_claims_data
-    }
+    # Build configuration from environment
+    config = build_config_from_env(env_vars, args.postgres_only, args.sqlserver_only)
+    
+    # Apply command line overrides
+    if args.skip_sample_data:
+        config['load_sample_data'] = False
+    if args.skip_claims_data:
+        config['skip_claims_data'] = True
+    
+    # Show configuration summary
+    console.print("\n[cyan]Database Setup Configuration:[/cyan]")
+    console.print(f"[blue]Environment file: {args.env}[/blue]")
+    if config.get('setup_postgres'):
+        console.print(f"[green]PostgreSQL: {config['postgres_host']}:{config['postgres_port']} -> {config['postgres_database']}[/green]")
+    if config.get('setup_sqlserver'):
+        console.print(f"[yellow]SQL Server: {config['sqlserver_host']} -> {config['sqlserver_database']}[/yellow]")
+    if config.get('load_sample_data'):
+        claims_note = " (config only)" if config.get('skip_claims_data') else " (with 100k claims)"
+        console.print(f"[blue]Sample Data: Enabled{claims_note}[/blue]")
     
     setup = DatabaseSetup(config)
     success = setup.run()
