@@ -556,20 +556,64 @@ def load_rvu_data(session, db_type: str):
     
     for cpt_code, description, work_rvu, pe_rvu, mp_rvu, total_rvu in CPT_CODES:
         if db_type == 'postgresql':
+            # Determine category based on CPT code (matches SQL Server logic)
+            if cpt_code.startswith('99'):
+                category = 'Evaluation and Management'
+                subcategory = 'Office Visits'
+            elif cpt_code.startswith('93'):
+                category = 'Medicine'
+                subcategory = 'Cardiovascular'
+            elif cpt_code.startswith('36'):
+                category = 'Surgery'
+                subcategory = 'Venipuncture'
+            elif cpt_code.startswith('8'):
+                category = 'Pathology and Laboratory'
+                subcategory = 'Chemistry'
+            elif cpt_code.startswith('7'):
+                category = 'Radiology'
+                if 'CT' in description:
+                    subcategory = 'Computed Tomography'
+                elif 'MRI' in description:
+                    subcategory = 'Magnetic Resonance Imaging'
+                elif 'ultrasound' in description.lower():
+                    subcategory = 'Ultrasound'
+                else:
+                    subcategory = 'Diagnostic Radiology'
+            elif cpt_code.startswith('4'):
+                category = 'Surgery'
+                subcategory = 'Digestive System'
+            elif cpt_code.startswith('1'):
+                category = 'Surgery'
+                subcategory = 'Integumentary System'
+            elif cpt_code.startswith('2'):
+                category = 'Surgery'
+                subcategory = 'Musculoskeletal System'
+            elif cpt_code.startswith('9'):
+                category = 'Medicine'
+                subcategory = 'Immunizations'
+            else:
+                category = 'Medicine'
+                subcategory = 'Other'
+            
             session.execute(text("""
                 INSERT INTO rvu_data 
-                (procedure_code, description, work_rvu, practice_expense_rvu, 
-                 malpractice_rvu, total_rvu, conversion_factor, is_active)
-                VALUES (:code, :desc, :work_rvu, :pe_rvu, :mp_rvu, :total_rvu, 36.04, true)
+                (procedure_code, description, category, subcategory, work_rvu, practice_expense_rvu, 
+                 malpractice_rvu, total_rvu, conversion_factor, status, created_at, updated_at)
+                VALUES (:code, :desc, :category, :subcategory, :work_rvu, :pe_rvu, :mp_rvu, :total_rvu, 36.04, 'Active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (procedure_code) DO UPDATE SET
                     description = EXCLUDED.description,
+                    category = EXCLUDED.category,
+                    subcategory = EXCLUDED.subcategory,
                     work_rvu = EXCLUDED.work_rvu,
                     practice_expense_rvu = EXCLUDED.practice_expense_rvu,
                     malpractice_rvu = EXCLUDED.malpractice_rvu,
-                    total_rvu = EXCLUDED.total_rvu
+                    total_rvu = EXCLUDED.total_rvu,
+                    updated_at = CURRENT_TIMESTAMP
             """), {
                 "code": cpt_code,
                 "desc": description,
+                "category": category,
+                "subcategory": subcategory,
                 "work_rvu": work_rvu,
                 "pe_rvu": pe_rvu,
                 "mp_rvu": mp_rvu,
