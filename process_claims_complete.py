@@ -261,8 +261,7 @@ class ClaimsProcessor:
                     c.total_charges, c.expected_reimbursement, c.insurance_type,
                     c.insurance_plan_id, c.subscriber_id, c.billing_provider_npi,
                     c.billing_provider_name, c.attending_provider_npi, c.attending_provider_name,
-                    c.primary_diagnosis_code, c.diagnosis_codes, c.payer_name, c.payer_code,
-                    c.batch_id
+                    c.primary_diagnosis_code, c.diagnosis_codes, c.batch_id
                 FROM claims c
                 WHERE c.processing_status = 'pending'
                 ORDER BY c.priority DESC, c.created_at ASC
@@ -430,6 +429,14 @@ class ClaimsProcessor:
         """Transfer validated claim to SQL Server."""
         claim_id = claim[1]
         
+        # Map payer info from insurance_type since we don't have dedicated payer fields
+        insurance_type = claim[15]  # insurance_type
+        insurance_plan_id = claim[16]  # insurance_plan_id
+        
+        # Use insurance_type as payer_name and financial_class as payer_code
+        payer_name = insurance_type or 'Unknown Payer'
+        payer_code = claim[12] or 'UNK'  # financial_class
+        
         # Insert main claim
         ss_cursor.execute("""
             INSERT INTO dbo.claims (
@@ -452,11 +459,12 @@ class ClaimsProcessor:
             float(claim[13]) if claim[13] else 0,
             float(expected_reimbursement),
             'P',  # Professional claim
-            claim[16], claim[17], claim[18],
-            claim[19], claim[20], claim[21],
-            claim[22],
-            json.dumps(claim[23]) if claim[23] else '[]',
-            claim[24], claim[25],
+            insurance_plan_id, claim[17],  # insurance_plan_id, subscriber_id
+            claim[18], claim[19],  # billing_provider_npi, billing_provider_name
+            claim[20], claim[21],  # attending_provider_npi, attending_provider_name
+            claim[22],  # primary_diagnosis_code
+            json.dumps(claim[23]) if claim[23] else '[]',  # diagnosis_codes
+            payer_name, payer_code,
             0.95,  # ML prediction score
             datetime.now()
         ))
