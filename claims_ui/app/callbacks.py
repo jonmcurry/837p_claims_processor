@@ -1,7 +1,8 @@
 # Defines the callbacks for the Dash application
 from dash.dependencies import Input, Output, State
-import dash_html_components as html
-from dash import dash_table
+from dash import html # Updated import
+from dash import dcc # Added dcc import, might be used implicitly or for future components
+from dash import dash_table # dash_table already imported correctly
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
@@ -312,5 +313,3 @@ def render_healthcare_analytics_sub_content(n_clicks, subtab_val, fac_vals, star
         return [html.H5("Patient Demographics", style={'textAlign':'center'}), html.Div(className='graph-container', children=[dcc.Graph(figure=fig_age)]), html.Div(className='graph-container', children=[dcc.Graph(figure=fig_gender)])]
 
     return html.P("Select a sub-tab and apply filters.")
-
-print("All callbacks defined, including styling and new Provider Metrics tab logic.")

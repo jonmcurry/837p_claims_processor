@@ -1,6 +1,4 @@
-#plotly-dash
 dash
 pandas
 pyodbc
-# Add sqlalchemy as well, as it's generally more versatile and common in Python projects
 sqlalchemy
