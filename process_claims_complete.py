@@ -427,62 +427,58 @@ class ClaimsProcessor:
     
     def transfer_to_sqlserver(self, ss_cursor, claim, line_items, expected_reimbursement):
         """Transfer validated claim to SQL Server."""
-        claim_id = claim[1]
+        facility_id = claim[2]
+        patient_account_number = claim[3]
         
-        # Map payer info from insurance_type since we don't have dedicated payer fields
-        insurance_type = claim[15]  # insurance_type
-        insurance_plan_id = claim[16]  # insurance_plan_id
+        # Extract patient name components
+        patient_first_name = claim[4] or ''
+        patient_last_name = claim[5] or ''
+        patient_middle_name = claim[6] or ''
+        full_patient_name = f"{patient_first_name} {patient_middle_name} {patient_last_name}".strip()
         
-        # Use insurance_type as payer_name and financial_class as payer_code
-        payer_name = insurance_type or 'Unknown Payer'
-        payer_code = claim[12] or 'UNK'  # financial_class
+        # Map financial class
+        financial_class_id = claim[12] or None  # financial_class
         
-        # Insert main claim
+        # Insert main claim using SQL Server schema
         ss_cursor.execute("""
             INSERT INTO dbo.claims (
-                claim_id, facility_id, patient_account_number,
-                patient_first_name, patient_last_name, patient_middle_name,
-                patient_date_of_birth, admission_date, discharge_date,
-                service_from_date, service_to_date, financial_class,
-                total_charges, expected_reimbursement, claim_type,
-                insurance_plan_id, subscriber_id, billing_provider_npi,
-                billing_provider_name, attending_provider_npi, attending_provider_name,
-                primary_diagnosis_code, additional_diagnosis_codes,
-                payer_name, payer_code, ml_prediction_score,
-                processing_date, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), GETDATE())
+                facility_id, patient_account_number, medical_record_number,
+                patient_name, first_name, last_name, date_of_birth,
+                gender, financial_class_id, secondary_insurance
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            claim_id, claim[2], claim[3],
-            claim[4], claim[5], claim[6],
-            claim[7], claim[8], claim[9],
-            claim[10], claim[11], claim[12],
-            float(claim[13]) if claim[13] else 0,
-            float(expected_reimbursement),
-            'P',  # Professional claim
-            insurance_plan_id, claim[17],  # insurance_plan_id, subscriber_id
-            claim[18], claim[19],  # billing_provider_npi, billing_provider_name
-            claim[20], claim[21],  # attending_provider_npi, attending_provider_name
-            claim[22],  # primary_diagnosis_code
-            json.dumps(claim[23]) if claim[23] else '[]',  # diagnosis_codes
-            payer_name, payer_code,
-            0.95,  # ML prediction score
-            datetime.now()
+            facility_id,
+            patient_account_number,
+            None,  # medical_record_number
+            full_patient_name,
+            patient_first_name,
+            patient_last_name,
+            claim[7],  # patient_date_of_birth
+            'U',  # gender (Unknown)
+            financial_class_id,
+            None  # secondary_insurance
         ))
         
-        # Insert line items
+        # Insert line items using SQL Server schema
         for item in line_items:
             ss_cursor.execute("""
-                INSERT INTO dbo.claim_line_items (
-                    claim_id, line_number, service_date, procedure_code,
-                    procedure_description, units, charge_amount,
-                    rendering_provider_npi, rendering_provider_name,
-                    diagnosis_pointers, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+                INSERT INTO dbo.claims_line_items (
+                    facility_id, patient_account_number, line_number,
+                    procedure_code, units, charge_amount,
+                    service_from_date, service_to_date,
+                    diagnosis_pointer, rendering_provider_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                claim_id, item[0], item[1], item[2],
-                item[3], item[4], float(item[5]) if item[5] else 0,
-                item[6], item[7],
-                json.dumps(item[8]) if item[8] else '[]'
+                facility_id,
+                patient_account_number,
+                item[0],  # line_number
+                item[2],  # procedure_code
+                item[4] or 1,  # units
+                float(item[5]) if item[5] else 0,  # charge_amount
+                item[1],  # service_date as both from and to
+                item[1],  # service_date
+                json.dumps(item[8]) if item[8] else None,  # diagnosis_pointer
+                item[6]  # rendering_provider_npi as rendering_provider_id
             ))
     
     def update_batch_metadata(self, cursor):
@@ -589,7 +585,7 @@ class ClaimsProcessor:
         ss_cursor.execute("SELECT COUNT(*) FROM dbo.claims")
         ss_claims_count = ss_cursor.fetchone()[0]
         
-        ss_cursor.execute("SELECT COUNT(*) FROM dbo.claim_line_items")
+        ss_cursor.execute("SELECT COUNT(*) FROM dbo.claims_line_items")
         ss_lines_count = ss_cursor.fetchone()[0]
         
         print(f"\n💾 SQL Server Status:")
