@@ -251,6 +251,10 @@ class DatabaseSetup:
                 if 'CREATE PARTITION FUNCTION' in line or 'CREATE PARTITION SCHEME' in line:
                     skip_until_go = True
                     continue
+                
+                # Skip PRINT statements that may cause issues
+                if line.strip().startswith('PRINT '):
+                    continue
                     
                 # Skip ON ClaimsDatePartitionScheme clauses
                 if 'ON ClaimsDatePartitionScheme' in line:
@@ -455,10 +459,10 @@ class DatabaseSetup:
                 success = False
         
         if success:
-            console.print("\n[bold green]🎉 Database setup completed successfully![/bold green]")
+            console.print("\n[bold green] Database setup completed successfully![/bold green]")
             self.show_summary()
         else:
-            console.print("\n[bold red]❌ Database setup failed[/bold red]")
+            console.print("\n[bold red] Database setup failed[/bold red]")
         
         return success
 

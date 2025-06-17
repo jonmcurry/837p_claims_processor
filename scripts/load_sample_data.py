@@ -292,6 +292,9 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
     payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
     payers = {row[1]: row[0] for row in payers_result.fetchall()}
     
+    if not payers:
+        raise Exception("No payers found in core_standard_payers table. Database schema may not have loaded correctly.")
+    
     financial_classes = [
         ('A', 'Medicare A', '1', 0.8500, 'HIGH', True, 'A01'),
         ('B', 'Medicare B', '1', 0.8000, 'HIGH', True, 'B02'),
