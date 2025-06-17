@@ -291,7 +291,7 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
     # Get payer IDs
     try:
         payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
-        payers = {row[1]: row[0] for row in payers_result.fetchall()}
+        payers = {row[1].strip(): row[0] for row in payers_result.fetchall()}
         
         if not payers:
             print("Warning: No payers found in core_standard_payers table. Attempting to load standard payers...")
@@ -325,7 +325,7 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
             
             # Re-query payers
             payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
-            payers = {row[1]: row[0] for row in payers_result.fetchall()}
+            payers = {row[1].strip(): row[0] for row in payers_result.fetchall()}
             
         print(f"Found {len(payers)} payers: {list(payers.keys())}")
     except Exception as e:
