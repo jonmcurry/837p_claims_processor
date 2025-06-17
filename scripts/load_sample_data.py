@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import json
 import random
 import sys
 from datetime import datetime, timedelta
@@ -1031,8 +1032,9 @@ def load_claims_data_postgresql_only(session):
             # Diagnosis codes
             num_diagnoses = random.randint(1, 4)
             selected_diagnoses = random.sample(DIAGNOSIS_CODES, num_diagnoses)
-            diagnosis_codes = [dx[0] for dx in selected_diagnoses]
-            primary_diagnosis = diagnosis_codes[0]
+            diagnosis_codes_list = [dx[0] for dx in selected_diagnoses]
+            diagnosis_codes = json.dumps(diagnosis_codes_list)  # Convert to JSON string for JSONB
+            primary_diagnosis = diagnosis_codes_list[0]
             
             # Calculate total charges from line items first
             total_charges = Decimal('0')
@@ -1068,7 +1070,7 @@ def load_claims_data_postgresql_only(session):
                     "rvu_malpractice": Decimal(str(mp_rvu)),
                     "rvu_total": Decimal(str(total_rvu)),
                     "expected_reimbursement": expected_reimbursement,
-                    "diagnosis_pointers": [1, 2] if len(diagnosis_codes) > 1 else [1]
+                    "diagnosis_pointers": [1, 2] if len(diagnosis_codes_list) > 1 else [1]
                 })
             
             # Expected reimbursement for claim (sum of line items)
