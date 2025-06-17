@@ -206,7 +206,7 @@ PHYSICIAN_SPECIALTIES = [
 ]
 
 def create_database_engine(connection_string: str):
-    """Create SQLAlchemy engine for PostgreSQL."""
+    """Create SQLAlchemy engine for PostgreSQL or SQL Server."""
     try:
         engine = create_engine(connection_string, echo=False)
         return engine
@@ -214,48 +214,97 @@ def create_database_engine(connection_string: str):
         print(f"Failed to create database engine: {e}")
         sys.exit(1)
 
-def load_facilities(session):
+def get_database_type(connection_string: str) -> str:
+    """Detect database type from connection string."""
+    if 'postgresql://' in connection_string or 'postgres://' in connection_string:
+        return 'postgresql'
+    elif 'mssql+pyodbc://' in connection_string or 'Driver 17 for SQL Server' in connection_string:
+        return 'sqlserver'
+    else:
+        # Default to SQL Server for backward compatibility
+        return 'sqlserver'
+
+def load_facilities(session, db_type: str):
     """Load sample facilities."""
     print("Loading facilities...")
     
-    facilities = [
-        ('FAC001', 'Springfield General Hospital', '1234567890', '11-1234567', '123 Main St', 'Springfield', 'IL', '62701'),
-        ('FAC002', 'Metropolis Regional Medical Center', '2345678901', '22-2345678', '456 Oak Ave', 'Metropolis', 'IL', '62960'),
-        ('FAC003', 'Chicago Downtown Clinic', '3456789012', '33-3456789', '789 State St', 'Chicago', 'IL', '60601'),
-        ('FAC004', 'Naperville West Campus', '4567890123', '44-4567890', '321 West St', 'Naperville', 'IL', '60540'),
-        ('FAC005', 'Evanston North Specialty Center', '5678901234', '55-5678901', '654 North Ave', 'Evanston', 'IL', '60201')
-    ]
-    
-    for facility_id, name, npi, tax_id, addr1, city, state, zip_code in facilities:
-        session.execute(text("""
-            INSERT INTO facilities 
-            (facility_id, facility_name, npi, tax_id, address_line_1, city, state, zip_code, active)
-            VALUES (:facility_id, :name, :npi, :tax_id, :addr1, :city, :state, :zip_code, true)
-            ON CONFLICT (facility_id) DO UPDATE SET
-                facility_name = EXCLUDED.facility_name,
-                npi = EXCLUDED.npi,
-                tax_id = EXCLUDED.tax_id,
-                address_line_1 = EXCLUDED.address_line_1,
-                city = EXCLUDED.city,
-                state = EXCLUDED.state,
-                zip_code = EXCLUDED.zip_code,
-                updated_at = CURRENT_TIMESTAMP
-        """), {
-            "facility_id": facility_id,
-            "name": name,
-            "npi": npi,
-            "tax_id": tax_id,
-            "addr1": addr1,
-            "city": city,
-            "state": state,
-            "zip_code": zip_code
-        })
+    if db_type == 'postgresql':
+        # PostgreSQL version - load into facilities table
+        facilities = [
+            ('FAC001', 'Springfield General Hospital', '1234567890', '11-1234567', '123 Main St', 'Springfield', 'IL', '62701'),
+            ('FAC002', 'Metropolis Regional Medical Center', '2345678901', '22-2345678', '456 Oak Ave', 'Metropolis', 'IL', '62960'),
+            ('FAC003', 'Chicago Downtown Clinic', '3456789012', '33-3456789', '789 State St', 'Chicago', 'IL', '60601'),
+            ('FAC004', 'Naperville West Campus', '4567890123', '44-4567890', '321 West St', 'Naperville', 'IL', '60540'),
+            ('FAC005', 'Evanston North Specialty Center', '5678901234', '55-5678901', '654 North Ave', 'Evanston', 'IL', '60201')
+        ]
+        
+        for facility_id, name, npi, tax_id, addr1, city, state, zip_code in facilities:
+            session.execute(text("""
+                INSERT INTO facilities 
+                (facility_id, facility_name, npi, tax_id, address_line_1, city, state, zip_code, active)
+                VALUES (:facility_id, :name, :npi, :tax_id, :addr1, :city, :state, :zip_code, true)
+                ON CONFLICT (facility_id) DO UPDATE SET
+                    facility_name = EXCLUDED.facility_name,
+                    npi = EXCLUDED.npi,
+                    tax_id = EXCLUDED.tax_id,
+                    address_line_1 = EXCLUDED.address_line_1,
+                    city = EXCLUDED.city,
+                    state = EXCLUDED.state,
+                    zip_code = EXCLUDED.zip_code,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "facility_id": facility_id,
+                "name": name,
+                "npi": npi,
+                "tax_id": tax_id,
+                "addr1": addr1,
+                "city": city,
+                "state": state,
+                "zip_code": zip_code
+            })
+    else:
+        # SQL Server version - load into dbo.facilities with MERGE
+        facilities = [
+            ('FAC001', 'Springfield General Hospital', '1234567890', '11-1234567', '123 Main St', 'Springfield', 'IL', '62701'),
+            ('FAC002', 'Metropolis Regional Medical Center', '2345678901', '22-2345678', '456 Oak Ave', 'Metropolis', 'IL', '62960'),
+            ('FAC003', 'Chicago Downtown Clinic', '3456789012', '33-3456789', '789 State St', 'Chicago', 'IL', '60601'),
+            ('FAC004', 'Naperville West Campus', '4567890123', '44-4567890', '321 West St', 'Naperville', 'IL', '60540'),
+            ('FAC005', 'Evanston North Specialty Center', '5678901234', '55-5678901', '654 North Ave', 'Evanston', 'IL', '60201')
+        ]
+        
+        for facility_id, name, npi, tax_id, addr1, city, state, zip_code in facilities:
+            # Use MERGE for SQL Server upsert
+            session.execute(text("""
+                MERGE dbo.facilities AS target
+                USING (SELECT :facility_id AS facility_id, :name AS facility_name, :npi AS npi, 
+                              :tax_id AS tax_id, :addr1 AS address_line_1, :city AS city, 
+                              :state AS state, :zip_code AS zip_code) AS source
+                ON target.facility_id = source.facility_id
+                WHEN MATCHED THEN
+                    UPDATE SET facility_name = source.facility_name, npi = source.npi,
+                               tax_id = source.tax_id, address_line_1 = source.address_line_1,
+                               city = source.city, state = source.state, zip_code = source.zip_code,
+                               updated_date = GETDATE()
+                WHEN NOT MATCHED THEN
+                    INSERT (facility_id, facility_name, npi, tax_id, address_line_1, city, state, zip_code, active, installed_date, updated_date)
+                    VALUES (source.facility_id, source.facility_name, source.npi, source.tax_id, 
+                            source.address_line_1, source.city, source.state, source.zip_code, 1, GETDATE(), GETDATE());
+            """), {
+                "facility_id": facility_id,
+                "name": name,
+                "npi": npi,
+                "tax_id": tax_id,
+                "addr1": addr1,
+                "city": city,
+                "state": state,
+                "zip_code": zip_code
+            })
     
     session.commit()
     print(">> Facilities loaded successfully")
     return ['FAC001', 'FAC002', 'FAC003', 'FAC004', 'FAC005']
 
-def load_providers(session):
+def load_providers(session, db_type: str):
     """Load sample providers."""
     print("Loading providers...")
     
@@ -267,25 +316,45 @@ def load_providers(session):
         npi = f"{fake.random_number(digits=10)}"
         specialty_code, specialty_name = random.choice(PHYSICIAN_SPECIALTIES)
         
-        session.execute(text("""
-            INSERT INTO providers 
-            (provider_id, first_name, last_name, npi, specialty_code, specialty_name, active)
-            VALUES (:provider_id, :first_name, :last_name, :npi, :specialty_code, :specialty_name, true)
-            ON CONFLICT (provider_id) DO UPDATE SET
-                first_name = EXCLUDED.first_name,
-                last_name = EXCLUDED.last_name,
-                npi = EXCLUDED.npi,
-                specialty_code = EXCLUDED.specialty_code,
-                specialty_name = EXCLUDED.specialty_name,
-                updated_at = CURRENT_TIMESTAMP
-        """), {
-            "provider_id": provider_id,
-            "first_name": first_name,
-            "last_name": last_name,
-            "npi": npi,
-            "specialty_code": specialty_code,
-            "specialty_name": specialty_name
-        })
+        if db_type == 'postgresql':
+            session.execute(text("""
+                INSERT INTO providers 
+                (provider_id, first_name, last_name, npi, specialty_code, specialty_name, active)
+                VALUES (:provider_id, :first_name, :last_name, :npi, :specialty_code, :specialty_name, true)
+                ON CONFLICT (provider_id) DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    npi = EXCLUDED.npi,
+                    specialty_code = EXCLUDED.specialty_code,
+                    specialty_name = EXCLUDED.specialty_name,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "provider_id": provider_id,
+                "first_name": first_name,
+                "last_name": last_name,
+                "npi": npi,
+                "specialty_code": specialty_code,
+                "specialty_name": specialty_name
+            })
+        else:
+            # SQL Server version using physicians table
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.physicians WHERE rendering_provider_id = :provider_id)
+                    INSERT INTO dbo.physicians 
+                    (rendering_provider_id, last_name, first_name, npi, specialty_code, active)
+                    VALUES (:provider_id, :last_name, :first_name, :npi, :specialty_code, 1)
+                ELSE
+                    UPDATE dbo.physicians 
+                    SET last_name = :last_name, first_name = :first_name, 
+                        npi = :npi, specialty_code = :specialty_code
+                    WHERE rendering_provider_id = :provider_id
+            """), {
+                "provider_id": provider_id,
+                "first_name": first_name,
+                "last_name": last_name,
+                "npi": npi,
+                "specialty_code": specialty_code
+            })
         
         provider_ids.append(provider_id)
     
@@ -293,69 +362,128 @@ def load_providers(session):
     print(">> Providers loaded successfully")
     return provider_ids
 
-def load_validation_rules(session):
+def load_validation_rules(session, db_type: str):
     """Load sample validation rules."""
     print("Loading validation rules...")
     
-    validation_rules = [
-        ('REQUIRED_FIELDS', 'Required fields validation', 'Validates all required claim fields are present', 'CRITICAL', True),
-        ('NPI_FORMAT', 'NPI format validation', 'Validates NPI is 10 digits', 'HIGH', True),
-        ('DATE_SEQUENCE', 'Date sequence validation', 'Validates service dates are logical', 'HIGH', True),
-        ('PROCEDURE_CODE', 'Procedure code validation', 'Validates CPT codes exist in RVU table', 'HIGH', True),
-        ('DIAGNOSIS_CODE', 'Diagnosis code validation', 'Validates ICD-10 format', 'HIGH', True),
-        ('CHARGE_AMOUNT', 'Charge amount validation', 'Validates charges are positive numbers', 'MEDIUM', True),
-        ('DUPLICATE_CLAIM', 'Duplicate claim check', 'Checks for duplicate claims', 'MEDIUM', True),
-        ('PATIENT_AGE', 'Patient age validation', 'Validates patient age for procedure', 'LOW', True)
-    ]
-    
-    for rule_name, display_name, description, severity, active in validation_rules:
-        session.execute(text("""
-            INSERT INTO validation_rules 
-            (rule_name, display_name, description, severity, active)
-            VALUES (:rule_name, :display_name, :description, :severity::validation_severity, :active)
-            ON CONFLICT (rule_name) DO UPDATE SET
-                display_name = EXCLUDED.display_name,
-                description = EXCLUDED.description,
-                severity = EXCLUDED.severity,
-                active = EXCLUDED.active,
-                updated_at = CURRENT_TIMESTAMP
-        """), {
-            "rule_name": rule_name,
-            "display_name": display_name,
-            "description": description,
-            "severity": severity,
-            "active": active
-        })
-    
-    session.commit()
-    print(">> Validation rules loaded successfully")
+    if db_type == 'postgresql':
+        validation_rules = [
+            ('REQUIRED_FIELDS', 'Required fields validation', 'Validates all required claim fields are present', 'CRITICAL', True),
+            ('NPI_FORMAT', 'NPI format validation', 'Validates NPI is 10 digits', 'HIGH', True),
+            ('DATE_SEQUENCE', 'Date sequence validation', 'Validates service dates are logical', 'HIGH', True),
+            ('PROCEDURE_CODE', 'Procedure code validation', 'Validates CPT codes exist in RVU table', 'HIGH', True),
+            ('DIAGNOSIS_CODE', 'Diagnosis code validation', 'Validates ICD-10 format', 'HIGH', True),
+            ('CHARGE_AMOUNT', 'Charge amount validation', 'Validates charges are positive numbers', 'MEDIUM', True),
+            ('DUPLICATE_CLAIM', 'Duplicate claim check', 'Checks for duplicate claims', 'MEDIUM', True),
+            ('PATIENT_AGE', 'Patient age validation', 'Validates patient age for procedure', 'LOW', True)
+        ]
+        
+        for rule_name, display_name, description, severity, active in validation_rules:
+            session.execute(text("""
+                INSERT INTO validation_rules 
+                (rule_name, display_name, description, severity, active)
+                VALUES (:rule_name, :display_name, :description, :severity::validation_severity, :active)
+                ON CONFLICT (rule_name) DO UPDATE SET
+                    display_name = EXCLUDED.display_name,
+                    description = EXCLUDED.description,
+                    severity = EXCLUDED.severity,
+                    active = EXCLUDED.active,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "rule_name": rule_name,
+                "display_name": display_name,
+                "description": description,
+                "severity": severity,
+                "active": active
+            })
+        
+        session.commit()
+        print(">> Validation rules loaded successfully")
+    else:
+        print(">> Skipping validation rules (SQL Server version doesn't include this table)")
 
-def load_rvu_data(session):
+def load_rvu_data(session, db_type: str):
     """Load RVU data for CPT codes."""
     print("Loading RVU data...")
     
     for cpt_code, description, work_rvu, pe_rvu, mp_rvu, total_rvu in CPT_CODES:
-        session.execute(text("""
-            INSERT INTO rvu_data 
-            (procedure_code, description, work_rvu, practice_expense_rvu, 
-             malpractice_rvu, total_rvu, effective_date, active)
-            VALUES (:code, :desc, :work_rvu, :pe_rvu, :mp_rvu, :total_rvu, 
-                    CURRENT_DATE - INTERVAL '1 year', true)
-            ON CONFLICT (procedure_code) DO UPDATE SET
-                description = EXCLUDED.description,
-                work_rvu = EXCLUDED.work_rvu,
-                practice_expense_rvu = EXCLUDED.practice_expense_rvu,
-                malpractice_rvu = EXCLUDED.malpractice_rvu,
-                total_rvu = EXCLUDED.total_rvu,
-                updated_at = CURRENT_TIMESTAMP
-        """), {
-            "code": cpt_code,
-            "desc": description,
-            "work_rvu": work_rvu,
-            "pe_rvu": pe_rvu,
-            "mp_rvu": mp_rvu,
-            "total_rvu": total_rvu
-        })
+        if db_type == 'postgresql':
+            session.execute(text("""
+                INSERT INTO rvu_data 
+                (procedure_code, description, work_rvu, practice_expense_rvu, 
+                 malpractice_rvu, total_rvu, effective_date, active)
+                VALUES (:code, :desc, :work_rvu, :pe_rvu, :mp_rvu, :total_rvu, 
+                        CURRENT_DATE - INTERVAL '1 year', true)
+                ON CONFLICT (procedure_code) DO UPDATE SET
+                    description = EXCLUDED.description,
+                    work_rvu = EXCLUDED.work_rvu,
+                    practice_expense_rvu = EXCLUDED.practice_expense_rvu,
+                    malpractice_rvu = EXCLUDED.malpractice_rvu,
+                    total_rvu = EXCLUDED.total_rvu,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "code": cpt_code,
+                "desc": description,
+                "work_rvu": work_rvu,
+                "pe_rvu": pe_rvu,
+                "mp_rvu": mp_rvu,
+                "total_rvu": total_rvu
+            })
+        else:
+            # SQL Server version with more fields
+            # Determine category based on CPT code
+            if cpt_code.startswith('99'):
+                category = 'Evaluation and Management'
+                subcategory = 'Office Visits'
+            elif cpt_code.startswith('93'):
+                category = 'Medicine'
+                subcategory = 'Cardiovascular'
+            elif cpt_code.startswith('36'):
+                category = 'Surgery'
+                subcategory = 'Venipuncture'
+            elif cpt_code.startswith('8'):
+                category = 'Pathology and Laboratory'
+                subcategory = 'Chemistry'
+            elif cpt_code.startswith('7'):
+                category = 'Radiology'
+                if 'CT' in description:
+                    subcategory = 'Computed Tomography'
+                elif 'MRI' in description:
+                    subcategory = 'Magnetic Resonance Imaging'
+                elif 'ultrasound' in description.lower():
+                    subcategory = 'Ultrasound'
+                else:
+                    subcategory = 'Diagnostic Radiology'
+            else:
+                category = 'Medicine'
+                subcategory = 'Other'
+            
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.rvu_data WHERE procedure_code = :code)
+                    INSERT INTO dbo.rvu_data 
+                    (procedure_code, description, category, subcategory, work_rvu, 
+                     practice_expense_rvu, malpractice_rvu, total_rvu, conversion_factor,
+                     non_facility_pe_rvu, facility_pe_rvu, effective_date, status,
+                     global_period, professional_component, technical_component, bilateral_surgery)
+                    VALUES (:code, :desc, :category, :subcategory, :work_rvu, :pe_rvu, :mp_rvu, 
+                            :total_rvu, 34.6062, :pe_rvu, :pe_rvu, DATEADD(YEAR, -1, GETDATE()), 
+                            'Active', '000', 1, 0, 0)
+                ELSE
+                    UPDATE dbo.rvu_data 
+                    SET description = :desc, category = :category, subcategory = :subcategory,
+                        work_rvu = :work_rvu, practice_expense_rvu = :pe_rvu, 
+                        malpractice_rvu = :mp_rvu, total_rvu = :total_rvu
+                    WHERE procedure_code = :code
+            """), {
+                "code": cpt_code,
+                "desc": description,
+                "category": category,
+                "subcategory": subcategory,
+                "work_rvu": work_rvu,
+                "pe_rvu": pe_rvu,
+                "mp_rvu": mp_rvu,
+                "total_rvu": total_rvu
+            })
     
     session.commit()
     print(">> RVU data loaded successfully")
@@ -548,13 +676,183 @@ def load_claims_data(session, facility_ids: List[str], provider_ids: List[str]):
     session.commit()
     print(">> Claims data loaded successfully")
 
+def load_claims_data_sqlserver(session, facility_ids: List[str], provider_ids: List[str]):
+    """Load 100,000 sample claims for SQL Server with line items and diagnoses."""
+    print("Loading 100,000 sample claims (SQL Server)...")
+    
+    # Get financial classes for each facility
+    try:
+        fc_result = session.execute(text("""
+            SELECT facility_id, financial_class_id 
+            FROM dbo.facility_financial_classes 
+            WHERE active = 1
+        """))
+        facility_financial_classes = {}
+        for row in fc_result.fetchall():
+            if row[0] not in facility_financial_classes:
+                facility_financial_classes[row[0]] = []
+            facility_financial_classes[row[0]].append(row[1])
+        
+        # If no financial classes found, create defaults
+        if not facility_financial_classes:
+            print("No financial classes found. Creating default ones...")
+            for facility_id in facility_ids:
+                facility_financial_classes[facility_id] = ['A', 'BC', 'MA', 'SP']
+    except Exception as e:
+        print(f"Warning: Could not load financial classes: {e}")
+        # Use default financial classes
+        for facility_id in facility_ids:
+            facility_financial_classes[facility_id] = ['A', 'BC', 'MA', 'SP']
+    
+    batch_size = 1000
+    total_claims = 100000
+    
+    for batch_start in range(0, total_claims, batch_size):
+        batch_end = min(batch_start + batch_size, total_claims)
+        batch_claims = []
+        batch_diagnoses = []
+        batch_line_items = []
+        
+        for i in range(batch_start, batch_end):
+            # Generate claim data
+            facility_id = random.choice(facility_ids)
+            patient_account = f"PAT{i+1:08d}"
+            mrn = f"MRN{fake.random_number(digits=8)}"
+            
+            # Patient demographics
+            gender = random.choice(['M', 'F'])
+            first_name = fake.first_name()
+            last_name = fake.last_name()
+            age = random.randint(1, 95)
+            dob = fake.date_of_birth(minimum_age=age, maximum_age=age)
+            
+            # Financial class
+            financial_class = random.choice(facility_financial_classes[facility_id])
+            
+            # Create timestamp within last 2 years
+            created_at = fake.date_time_between(start_date='-2y', end_date='now')
+            
+            batch_claims.append({
+                "facility_id": facility_id,
+                "patient_account_number": patient_account,
+                "medical_record_number": mrn,
+                "first_name": first_name,
+                "last_name": last_name,
+                "date_of_birth": dob,
+                "gender": gender,
+                "financial_class_id": financial_class,
+                "created_at": created_at
+            })
+            
+            # Generate diagnoses (1-4 per claim)
+            num_diagnoses = random.randint(1, 4)
+            selected_diagnoses = random.sample(DIAGNOSIS_CODES, num_diagnoses)
+            
+            for seq, (dx_code, dx_desc) in enumerate(selected_diagnoses, 1):
+                dx_type = 'PRIMARY' if seq == 1 else 'SECONDARY'
+                batch_diagnoses.append({
+                    "facility_id": facility_id,
+                    "patient_account_number": patient_account,
+                    "diagnosis_sequence": seq,
+                    "diagnosis_code": dx_code,
+                    "diagnosis_description": dx_desc,
+                    "diagnosis_type": dx_type,
+                    "created_at": created_at
+                })
+            
+            # Generate line items (1-6 per claim)
+            num_line_items = random.randint(1, 6)
+            selected_cpts = random.sample(CPT_CODES, min(num_line_items, len(CPT_CODES)))
+            
+            for line_num, (cpt_code, cpt_desc, work_rvu, pe_rvu, mp_rvu, total_rvu) in enumerate(selected_cpts, 1):
+                units = random.randint(1, 3)
+                
+                # Calculate charges
+                conversion_factor = Decimal('34.61')
+                charge_amount = round(Decimal(str(total_rvu)) * conversion_factor * units * Decimal(str(random.uniform(0.8, 1.2))), 2)
+                
+                # Service dates
+                service_from = created_at.date()
+                service_to = service_from
+                
+                # Place of service
+                place_of_service = random.choice(['11', '22', '23', '21', '24'])
+                
+                # Diagnosis pointer
+                diagnosis_pointer = ','.join([str(j) for j in range(1, min(num_diagnoses + 1, 5))])
+                
+                # Provider
+                rendering_provider = random.choice(provider_ids)
+                
+                batch_line_items.append({
+                    "facility_id": facility_id,
+                    "patient_account_number": patient_account,
+                    "line_number": line_num,
+                    "procedure_code": cpt_code,
+                    "units": units,
+                    "charge_amount": charge_amount,
+                    "service_from_date": service_from,
+                    "service_to_date": service_to,
+                    "diagnosis_pointer": diagnosis_pointer,
+                    "place_of_service": place_of_service,
+                    "rvu_value": Decimal(str(total_rvu)),
+                    "rendering_provider_id": rendering_provider,
+                    "created_at": created_at
+                })
+        
+        # Insert batch data using SQL Server syntax
+        # Claims
+        if batch_claims:
+            for claim in batch_claims:
+                session.execute(text("""
+                    INSERT INTO dbo.claims 
+                    (facility_id, patient_account_number, medical_record_number, first_name, 
+                     last_name, date_of_birth, gender, financial_class_id, created_at)
+                    VALUES (:facility_id, :patient_account_number, :medical_record_number, 
+                            :first_name, :last_name, :date_of_birth, :gender, 
+                            :financial_class_id, :created_at)
+                """), claim)
+        
+        # Diagnoses
+        if batch_diagnoses:
+            for dx in batch_diagnoses:
+                session.execute(text("""
+                    INSERT INTO dbo.claims_diagnosis 
+                    (facility_id, patient_account_number, diagnosis_sequence, diagnosis_code,
+                     diagnosis_description, diagnosis_type, created_at)
+                    VALUES (:facility_id, :patient_account_number, :diagnosis_sequence, 
+                            :diagnosis_code, :diagnosis_description, :diagnosis_type, :created_at)
+                """), dx)
+        
+        # Line items
+        if batch_line_items:
+            for li in batch_line_items:
+                session.execute(text("""
+                    INSERT INTO dbo.claims_line_items 
+                    (facility_id, patient_account_number, line_number, procedure_code, units,
+                     charge_amount, service_from_date, service_to_date, diagnosis_pointer,
+                     place_of_service, rvu_value, rendering_provider_id, created_at)
+                    VALUES (:facility_id, :patient_account_number, :line_number, :procedure_code, 
+                            :units, :charge_amount, :service_from_date, :service_to_date, 
+                            :diagnosis_pointer, :place_of_service, :rvu_value, 
+                            :rendering_provider_id, :created_at)
+                """), li)
+        
+        session.commit()
+        
+        # Progress indicator
+        progress = ((batch_end) / total_claims) * 100
+        print(f"  Progress: {progress:.1f}% ({batch_end:,}/{total_claims:,} claims)")
+    
+    print(">> Claims data loaded successfully")
+
 def main():
     """Main function to load all sample data."""
-    parser = argparse.ArgumentParser(description='Load sample data for PostgreSQL claims staging database')
+    parser = argparse.ArgumentParser(description='Load sample data for claims database (PostgreSQL or SQL Server)')
     parser.add_argument(
         '--connection-string',
         required=True,
-        help='PostgreSQL connection string (e.g., postgresql://user:pass@host:port/database)'
+        help='Database connection string (PostgreSQL: postgresql://user:pass@host:port/database or SQL Server: mssql+pyodbc://...)'
     )
     parser.add_argument(
         '--skip-claims',
@@ -564,7 +862,7 @@ def main():
     
     args = parser.parse_args()
     
-    print("Starting PostgreSQL Claims Staging sample data loading...")
+    print("Starting Claims Database sample data loading...")
     print(f"Connection: {args.connection_string.split('@')[1] if '@' in args.connection_string else 'Local'}")
     
     try:
@@ -573,24 +871,31 @@ def main():
         Session = sessionmaker(bind=engine)
         session = Session()
         
+        # Detect database type
+        db_type = get_database_type(args.connection_string)
+        print(f"Detected database type: {db_type}")
+        
         # Load data in order
         start_time = datetime.now()
         
         # 1. Load facilities
-        facility_ids = load_facilities(session)
+        facility_ids = load_facilities(session, db_type)
         
         # 2. Load providers
-        provider_ids = load_providers(session)
+        provider_ids = load_providers(session, db_type)
         
         # 3. Load RVU data
-        load_rvu_data(session)
+        load_rvu_data(session, db_type)
         
-        # 4. Load validation rules
-        load_validation_rules(session)
+        # 4. Load validation rules (PostgreSQL only)
+        load_validation_rules(session, db_type)
         
         # 5. Load claims data (if not skipped)
         if not args.skip_claims:
-            load_claims_data(session, facility_ids, provider_ids)
+            if db_type == 'postgresql':
+                load_claims_data(session, facility_ids, provider_ids)
+            else:
+                load_claims_data_sqlserver(session, facility_ids, provider_ids)
         else:
             print(">> Skipping claims data loading")
         
@@ -607,10 +912,18 @@ def main():
         print(f"   - 5 Facilities")
         print(f"   - 200 Providers")
         print(f"   - {len(CPT_CODES)} CPT/RVU codes")
-        print(f"   - 8 Validation rules")
+        if db_type == 'postgresql':
+            print(f"   - 8 Validation rules")
         if not args.skip_claims:
-            print(f"   - 100,000 Claims with line items")
-        print(f"\n>> Ready for claims processing workflow!")
+            if db_type == 'postgresql':
+                print(f"   - 100,000 Claims with line items")
+            else:
+                print(f"   - 100,000 Claims with line items and diagnoses")
+        
+        if db_type == 'postgresql':
+            print(f"\n>> Ready for PostgreSQL claims processing workflow!")
+        else:
+            print(f"\n>> Ready for SQL Server claims processing workflow!")
         
     except Exception as e:
         print(f"Error loading sample data: {e}")
