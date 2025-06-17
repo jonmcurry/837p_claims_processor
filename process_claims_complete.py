@@ -443,8 +443,45 @@ class ClaimsProcessor:
         patient_middle_name = claim[6] or ''
         full_patient_name = f"{patient_first_name} {patient_middle_name} {patient_last_name}".strip()
         
-        # Map financial class
-        financial_class_id = claim[12] or None  # financial_class
+        # Map financial class from PostgreSQL name to SQL Server ID
+        financial_class_name = claim[12]  # financial_class from PostgreSQL
+        financial_class_id = None
+        
+        if financial_class_name:
+            # Map PostgreSQL financial class names to SQL Server IDs
+            financial_class_mapping = {
+                'Medicare Part A': 'A',
+                'Medicare Part B': 'B', 
+                'Medicaid': 'MA',
+                'Commercial HMO': 'HM',
+                'Commercial PPO': 'BC',
+                'Self Pay': 'SP',
+                'Workers Comp': 'WC',
+                'A': 'A',  # Direct mappings for SQL Server generated data
+                'BC': 'BC',
+                'MA': 'MA',
+                'SP': 'SP',
+                'WC': 'WC',
+                'CO': 'CO',
+                'HM': 'HM'
+            }
+            
+            mapped_fc_id = financial_class_mapping.get(financial_class_name)
+            
+            # Validate that the financial class exists for this facility
+            if mapped_fc_id:
+                ss_cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM dbo.facility_financial_classes 
+                    WHERE facility_id = ? AND financial_class_id = ?
+                """, (facility_id, mapped_fc_id))
+                
+                if ss_cursor.fetchone()[0] > 0:
+                    financial_class_id = mapped_fc_id
+                else:
+                    print(f"   WARNING: Financial class {mapped_fc_id} not found for facility {facility_id}, using NULL")
+            else:
+                print(f"   WARNING: Unknown financial class '{financial_class_name}', using NULL")
         
         # Insert main claim using SQL Server schema
         ss_cursor.execute("""
@@ -468,23 +505,9 @@ class ClaimsProcessor:
         
         # Insert line items using SQL Server schema
         for item in line_items:
-            # Map NPI to provider ID by looking up in physicians table
-            provider_npi = item[6]  # rendering_provider_npi
+            # Skip provider lookup since physicians table is not populated
+            # Always use NULL for rendering_provider_id to avoid foreign key constraints
             provider_id = None
-            
-            if provider_npi:
-                ss_cursor.execute("""
-                    SELECT rendering_provider_id 
-                    FROM dbo.physicians 
-                    WHERE npi = ?
-                """, (provider_npi,))
-                
-                provider_result = ss_cursor.fetchone()
-                if provider_result:
-                    provider_id = provider_result[0]
-                else:
-                    # Log warning but continue with null provider
-                    print(f"   WARNING: Provider NPI {provider_npi} not found in physicians table")
             
             ss_cursor.execute("""
                 INSERT INTO dbo.claims_line_items (
@@ -503,7 +526,7 @@ class ClaimsProcessor:
                 item[1],  # service_date as both from and to
                 item[1],  # service_date
                 json.dumps(item[8]) if item[8] else None,  # diagnosis_pointer
-                provider_id  # mapped provider_id from physicians table
+                provider_id  # Always NULL to avoid foreign key constraint
             ))
     
     def update_batch_metadata(self, cursor):
