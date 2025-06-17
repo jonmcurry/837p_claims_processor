@@ -349,11 +349,11 @@ CREATE INDEX CONCURRENTLY idx_failed_claims_resolution ON failed_claims(resoluti
 CREATE INDEX CONCURRENTLY idx_failed_claims_category_facility ON failed_claims(failure_category, facility_id);
 CREATE INDEX CONCURRENTLY idx_failed_claims_failed_at ON failed_claims(failed_at);
 
--- Audit and metrics indexes
-CREATE INDEX CONCURRENTLY idx_audit_logs_user_time ON audit_logs(user_id, created_at);
-CREATE INDEX CONCURRENTLY idx_audit_logs_phi_access ON audit_logs(accessed_phi, created_at);
-CREATE INDEX CONCURRENTLY idx_performance_metrics_type_time ON performance_metrics(metric_type, recorded_at);
-CREATE INDEX CONCURRENTLY idx_performance_metrics_service ON performance_metrics(service_name, recorded_at);
+-- Audit and metrics indexes (cannot use CONCURRENTLY on partitioned tables)
+CREATE INDEX idx_audit_logs_user_time ON audit_logs(user_id, recorded_at);
+CREATE INDEX idx_audit_logs_phi_access ON audit_logs(accessed_phi, recorded_at);
+CREATE INDEX idx_performance_metrics_type_time ON performance_metrics(metric_type, recorded_at);
+CREATE INDEX idx_performance_metrics_service ON performance_metrics(service_name, recorded_at);
 
 -- Lookup table indexes
 CREATE INDEX CONCURRENTLY idx_facilities_facility_id ON facilities(facility_id);

@@ -223,7 +223,10 @@ class DatabaseSetup:
             skip_until_go = False
             
             for line in lines:
-                # Skip database creation block
+                # Skip database creation block (including IF EXISTS check)
+                if 'IF NOT EXISTS' in line and 'smart_pro_claims' in line:
+                    skip_until_go = True
+                    continue
                 if 'CREATE DATABASE smart_pro_claims' in line:
                     skip_until_go = True
                     continue
