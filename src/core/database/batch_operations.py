@@ -7,7 +7,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from sqlalchemy import text, bindparam
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlserver import insert as ss_insert
+
+# Handle SQL Server dialect import gracefully
+try:
+    from sqlalchemy.dialects.sqlserver import insert as ss_insert
+except ImportError:
+    # SQL Server dialect not available, use generic insert
+    from sqlalchemy import insert as ss_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config.settings import settings
