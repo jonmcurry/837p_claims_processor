@@ -6,10 +6,10 @@ import urllib
 # It is highly recommended to use environment variables or a secure configuration manager
 # for sensitive information like passwords, rather than hardcoding them.
 DB_CONFIG = {
-    'server_name': 'YOUR_SQL_SERVER_NAME',  # e.g., 'localhost\SQLEXPRESS' or your server's DNS name
+    'server_name': 'localhost',  # e.g., 'localhost\SQLEXPRESS' or your server's DNS name
     'database_name': 'smart_pro_claims', # As per your schema files
-    'username': 'YOUR_USERNAME',          # Your SQL Server username
-    'password': 'YOUR_PASSWORD',          # Your SQL Server password
+    'username': 'sa',          # Your SQL Server username
+    'password': 'ClearToFly1',          # Your SQL Server password
     'driver': 'ODBC Driver 17 for SQL Server' # Ensure this driver is installed
 }
 
