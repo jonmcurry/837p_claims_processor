@@ -17,6 +17,7 @@ import argparse
 import json
 import random
 import sys
+import os
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Any
@@ -205,6 +206,67 @@ PHYSICIAN_SPECIALTIES = [
     ('89', 'Certified Clinical Nurse Specialist'),
     ('97', 'Physician Assistant')
 ]
+
+def load_env_file(env_path='config/.env'):
+    """Load environment variables from .env file."""
+    env_vars = {}
+    
+    # First try the provided path
+    if not os.path.exists(env_path):
+        # Try .env.example if .env doesn't exist
+        if os.path.exists('config/.env.example'):
+            env_path = 'config/.env.example'
+            print(f"⚠️  Using .env.example - copy to .env for production use")
+        else:
+            print(f"❌ Environment file '{env_path}' not found!")
+            return None
+    
+    try:
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                # Skip comments and empty lines
+                if line and not line.startswith('#'):
+                    # Split on first = only
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key.strip()] = value.strip()
+        return env_vars
+    except Exception as e:
+        print(f"❌ Error loading env file: {e}")
+        return None
+
+def build_connection_strings(env_vars):
+    """Build connection strings from environment variables."""
+    # PostgreSQL connection string
+    pg_host = env_vars.get('POSTGRES_HOST', 'localhost')
+    pg_port = env_vars.get('POSTGRES_PORT', '5432')
+    pg_db = env_vars.get('POSTGRES_DB', 'claims_processor_dev')
+    pg_user = env_vars.get('POSTGRES_USER', 'postgres')
+    pg_pass = env_vars.get('POSTGRES_PASSWORD', '')
+    
+    # Override database name for staging
+    if pg_db == 'claims_processor_dev':
+        pg_db = 'claims_staging'
+        print(f"📝 Note: Using 'claims_staging' database instead of 'claims_processor_dev'")
+    
+    pg_conn = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+    
+    # SQL Server connection string
+    ss_host = env_vars.get('SQLSERVER_HOST', 'localhost')
+    ss_port = env_vars.get('SQLSERVER_PORT', '1433')
+    ss_db = env_vars.get('SQLSERVER_DB', 'claims_analytics_dev')
+    ss_user = env_vars.get('SQLSERVER_USER', 'sa')
+    ss_pass = env_vars.get('SQLSERVER_PASSWORD', '')
+    
+    # Override database name for production
+    if ss_db == 'claims_analytics_dev':
+        ss_db = 'smart_pro_claims'
+        print(f"📝 Note: Using 'smart_pro_claims' database instead of 'claims_analytics_dev'")
+    
+    ss_conn = f"mssql+pyodbc://{ss_user}:{ss_pass}@{ss_host}:{ss_port}/{ss_db}?driver=ODBC+Driver+17+for+SQL+Server"
+    
+    return pg_conn, ss_conn
 
 def create_database_engine(connection_string: str):
     """Create SQLAlchemy engine for PostgreSQL or SQL Server."""
@@ -1370,12 +1432,16 @@ def load_claims_data_sqlserver(session, facility_ids: List[str], provider_ids: L
     print(">> Claims data loaded successfully")
 
 def main():
-    """Main function to load all sample data."""
-    parser = argparse.ArgumentParser(description='Load sample data for claims database (PostgreSQL or SQL Server)')
+    """Main function to load sample claims data into PostgreSQL."""
+    parser = argparse.ArgumentParser(description='Load 100,000 sample claims into PostgreSQL public.claims')
     parser.add_argument(
-        '--connection-string',
-        required=True,
-        help='Database connection string (PostgreSQL: postgresql://user:pass@host:port/database or SQL Server: mssql+pyodbc://...)'
+        '--env',
+        default='config/.env',
+        help='Environment file path (default: config/.env, fallback: config/.env.example)'
+    )
+    parser.add_argument(
+        '--pg-conn',
+        help='PostgreSQL connection string (overrides env file)'
     )
     parser.add_argument(
         '--skip-claims',
@@ -1385,64 +1451,47 @@ def main():
     
     args = parser.parse_args()
     
-    print("Starting Claims Database sample data loading...")
-    print(f"Connection: {args.connection_string.split('@')[1] if '@' in args.connection_string else 'Local'}")
+    # Load configuration from env file if connection string not provided
+    if not args.pg_conn:
+        env_vars = load_env_file(args.env)
+        if not env_vars:
+            print("❌ Failed to load environment configuration. Exiting.")
+            print("   Make sure config/.env exists (copy from config/.env.example)")
+            sys.exit(1)
+        
+        pg_conn, _ = build_connection_strings(env_vars)
+    else:
+        pg_conn = args.pg_conn
+    
+    print("Starting PostgreSQL Claims Data Loading...")
+    print(f"Environment config: {args.env}")
+    print(f"Target: PostgreSQL public.claims table")
     
     try:
         # Create database engine and session
-        engine = create_database_engine(args.connection_string)
+        engine = create_database_engine(pg_conn)
         Session = sessionmaker(bind=engine)
         session = Session()
         
-        # Detect database type
-        db_type = get_database_type(args.connection_string)
-        print(f"Detected database type: {db_type}")
+        print(f"Connected to PostgreSQL: {pg_conn.split('@')[1] if '@' in pg_conn else 'Local'}")
+        print(">>> CLAIMS WILL BE LOADED INTO POSTGRESQL public.claims TABLE")
         
-        if db_type == 'postgresql':
-            print(">>> CLAIMS WILL BE LOADED INTO POSTGRESQL public.claims TABLE")
-        else:
-            print(">>> CLAIMS WILL BE LOADED INTO SQL SERVER dbo.claims TABLE")
-        
-        # Load data in order
+        # Load data for PostgreSQL claims processing
         start_time = datetime.now()
         
-        if db_type == 'postgresql':
-            # PostgreSQL: Load only processing-specific data (no facilities/providers)
-            print("Setting up PostgreSQL for claims processing...")
-            
-            # 1. Load RVU data (processing reference)
-            load_rvu_data(session, db_type)
-            
-            # 2. Load validation rules
-            load_validation_rules(session, db_type)
-            
-            # 3. Load sample claims (using hardcoded facility/provider references)
-            if not args.skip_claims:
-                load_claims_data_postgresql_only(session)
-            else:
-                print(">> Skipping claims data loading")
-                
+        print("Setting up PostgreSQL for claims processing...")
+        
+        # 1. Load RVU data (processing reference)
+        load_rvu_data(session, 'postgresql')
+        
+        # 2. Load validation rules
+        load_validation_rules(session, 'postgresql')
+        
+        # 3. Load sample claims (using hardcoded facility/provider references)
+        if not args.skip_claims:
+            load_claims_data_postgresql_only(session)
         else:
-            # SQL Server: Load full dataset including facilities and providers
-            print("Setting up SQL Server with full dataset...")
-            
-            # 1. Load facilities
-            facility_ids = load_facilities(session, db_type)
-            
-            # 2. Load providers
-            provider_ids = load_providers(session, db_type)
-            
-            # 3. Load RVU data
-            load_rvu_data(session, db_type)
-            
-            # 4. Load facility configuration
-            load_facility_configuration_sqlserver(session, facility_ids)
-            
-            # 5. Load claims data
-            if not args.skip_claims:
-                load_claims_data_sqlserver(session, facility_ids, provider_ids)
-            else:
-                print(">> Skipping claims data loading")
+            print(">> Skipping claims data loading")
         
         # Final commit and summary
         session.commit()
@@ -1451,35 +1500,24 @@ def main():
         end_time = datetime.now()
         duration = end_time - start_time
         
-        print(f"\n>> Sample data loading completed successfully!")
+        print(f"\n>> PostgreSQL claims data loading completed successfully!")
         print(f"Total time: {duration}")
         print(f"\nData Summary:")
-        if db_type == 'postgresql':
-            print(f"   - {len(CPT_CODES)} CPT/RVU codes (processing reference)")
-            print(f"   - 8 Validation rules")
-            print(f"   - Facilities/Providers: Referenced from SQL Server")
-            if not args.skip_claims:
-                print(f"   - 100,000 Claims with line items (processing-focused)")
-        else:
-            print(f"   - 2 Organizations")
-            print(f"   - 2 Regions")
-            print(f"   - 5 Facilities with configuration")
-            print(f"   - 200 Providers")
-            print(f"   - {len(CPT_CODES)} CPT/RVU codes")
-            print(f"   - Financial classes, departments, and coders")
-            if not args.skip_claims:
-                print(f"   - 100,000 Claims with line items and diagnoses")
+        print(f"   - {len(CPT_CODES)} CPT/RVU codes (processing reference)")
+        print(f"   - 8 Validation rules")
+        print(f"   - Facilities/Providers: Referenced from SQL Server")
+        if not args.skip_claims:
+            print(f"   - 100,000 Claims with line items (processing-focused)")
         
-        if db_type == 'postgresql':
-            print(f"\n>> PostgreSQL claims processing database ready!")
-            print(f">> Claims loaded for processing workflow")
-            print(f">> Reference data (facilities/providers) remains in SQL Server")
-        else:
-            print(f"\n>> SQL Server analytics database ready!")
-            print(f">> Full dataset loaded for reporting and analytics")
+        print(f"\n>> PostgreSQL claims processing database ready!")
+        print(f">> Claims loaded into public.claims table for processing workflow")
+        print(f">> Reference data (facilities/providers) remains in SQL Server")
+        print(f"\n>> Next steps:")
+        print(f"   1. Run process_claims_complete.py to process claims")
+        print(f"   2. Processed claims will be transferred to SQL Server")
         
     except Exception as e:
-        print(f"Error loading sample data: {e}")
+        print(f"Error loading claims data: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
