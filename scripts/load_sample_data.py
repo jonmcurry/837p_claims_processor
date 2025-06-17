@@ -27,6 +27,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import psycopg2
 
+try:
+    import pyodbc
+    SQLSERVER_AVAILABLE = True
+except ImportError:
+    SQLSERVER_AVAILABLE = False
+
 # Initialize Faker for generating realistic data
 fake = Faker()
 fake.seed_instance(42)  # For reproducible data
@@ -1432,8 +1438,8 @@ def load_claims_data_sqlserver(session, facility_ids: List[str], provider_ids: L
     print(">> Claims data loaded successfully")
 
 def main():
-    """Main function to load sample claims data into PostgreSQL."""
-    parser = argparse.ArgumentParser(description='Load 100,000 sample claims into PostgreSQL public.claims')
+    """Main function to load sample data into PostgreSQL and/or SQL Server."""
+    parser = argparse.ArgumentParser(description='Load sample data into PostgreSQL and/or SQL Server')
     parser.add_argument(
         '--env',
         default='config/.env',
@@ -1444,6 +1450,20 @@ def main():
         help='PostgreSQL connection string (overrides env file)'
     )
     parser.add_argument(
+        '--ss-conn',
+        help='SQL Server connection string (overrides env file)'
+    )
+    parser.add_argument(
+        '--postgres-only',
+        action='store_true',
+        help='Load only PostgreSQL data'
+    )
+    parser.add_argument(
+        '--sqlserver-only',
+        action='store_true',
+        help='Load only SQL Server data'
+    )
+    parser.add_argument(
         '--skip-claims',
         action='store_true',
         help='Skip loading claims data (for faster testing)'
@@ -1451,76 +1471,137 @@ def main():
     
     args = parser.parse_args()
     
-    # Load configuration from env file if connection string not provided
-    if not args.pg_conn:
+    # Validate options
+    if args.postgres_only and args.sqlserver_only:
+        parser.error("Cannot specify both --postgres-only and --sqlserver-only")
+    
+    # Load configuration from env file if connection strings not provided
+    env_vars = None
+    if not args.pg_conn or not args.ss_conn:
         env_vars = load_env_file(args.env)
         if not env_vars:
             print("ERROR: Failed to load environment configuration. Exiting.")
             print("   Make sure config/.env exists (copy from config/.env.example)")
             sys.exit(1)
-        
-        pg_conn, _ = build_connection_strings(env_vars)
+    
+    # Build connection strings
+    if env_vars:
+        pg_conn_env, ss_conn_env = build_connection_strings(env_vars)
     else:
-        pg_conn = args.pg_conn
+        pg_conn_env, ss_conn_env = None, None
     
-    print("Starting PostgreSQL Claims Data Loading...")
-    print(f"Environment config: {args.env}")
-    print(f"Target: PostgreSQL public.claims table")
+    pg_conn = args.pg_conn or pg_conn_env
+    ss_conn = args.ss_conn or ss_conn_env
     
-    try:
-        # Create database engine and session
-        engine = create_database_engine(pg_conn)
-        Session = sessionmaker(bind=engine)
-        session = Session()
-        
-        print(f"Connected to PostgreSQL: {pg_conn.split('@')[1] if '@' in pg_conn else 'Local'}")
-        print(">>> CLAIMS WILL BE LOADED INTO POSTGRESQL public.claims TABLE")
-        
-        # Load data for PostgreSQL claims processing
-        start_time = datetime.now()
-        
-        print("Setting up PostgreSQL for claims processing...")
-        
-        # 1. Load RVU data (processing reference)
-        load_rvu_data(session, 'postgresql')
-        
-        # 2. Load validation rules
-        load_validation_rules(session, 'postgresql')
-        
-        # 3. Load sample claims (using hardcoded facility/provider references)
-        if not args.skip_claims:
-            load_claims_data_postgresql_only(session)
-        else:
-            print(">> Skipping claims data loading")
-        
-        # Final commit and summary
-        session.commit()
-        session.close()
-        
-        end_time = datetime.now()
-        duration = end_time - start_time
-        
-        print(f"\n>> PostgreSQL claims data loading completed successfully!")
-        print(f"Total time: {duration}")
-        print(f"\nData Summary:")
-        print(f"   - {len(CPT_CODES)} CPT/RVU codes (processing reference)")
-        print(f"   - 8 Validation rules")
-        print(f"   - Facilities/Providers: Referenced from SQL Server")
-        if not args.skip_claims:
-            print(f"   - 100,000 Claims with line items (processing-focused)")
-        
-        print(f"\n>> PostgreSQL claims processing database ready!")
-        print(f">> Claims loaded into public.claims table for processing workflow")
-        print(f">> Reference data (facilities/providers) remains in SQL Server")
-        print(f"\n>> Next steps:")
-        print(f"   1. Run process_claims_complete.py to process claims")
-        print(f"   2. Processed claims will be transferred to SQL Server")
-        
-    except Exception as e:
-        print(f"Error loading claims data: {e}")
-        import traceback
-        traceback.print_exc()
+    # Determine what to load
+    load_postgres = not args.sqlserver_only and pg_conn
+    load_sqlserver = not args.postgres_only and ss_conn
+    
+    if not load_postgres and not load_sqlserver:
+        print("ERROR: No valid database connections configured")
         sys.exit(1)
+    
+    print("Starting Sample Data Loading...")
+    print(f"Environment config: {args.env}")
+    if load_postgres:
+        print(f"Target: PostgreSQL public.claims table")
+    if load_sqlserver:
+        print(f"Target: SQL Server smart_pro_claims database")
+    
+    start_time = datetime.now()
+    
+    # Load PostgreSQL data
+    if load_postgres:
+        try:
+            print("\n=== LOADING POSTGRESQL DATA ===")
+            engine = create_database_engine(pg_conn)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            
+            print(f"Connected to PostgreSQL: {pg_conn.split('@')[1] if '@' in pg_conn else 'Local'}")
+            
+            # 1. Load RVU data (processing reference)
+            load_rvu_data(session, 'postgresql')
+            
+            # 2. Load validation rules
+            load_validation_rules(session, 'postgresql')
+            
+            # 3. Load sample claims (using hardcoded facility/provider references)
+            if not args.skip_claims:
+                load_claims_data_postgresql_only(session)
+            else:
+                print(">> Skipping claims data loading")
+            
+            session.commit()
+            session.close()
+            print(">> PostgreSQL data loading completed")
+            
+        except Exception as e:
+            print(f"Error loading PostgreSQL data: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+    
+    # Load SQL Server data
+    if load_sqlserver:
+        try:
+            print("\n=== LOADING SQL SERVER DATA ===")
+            engine = create_database_engine(ss_conn)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            
+            print(f"Connected to SQL Server: {ss_conn.split('@')[1] if '@' in ss_conn else 'Local'}")
+            
+            # 1. Load facilities and organizational hierarchy
+            facility_ids = load_facilities(session, 'sqlserver')
+            
+            # 2. Load providers
+            provider_ids = load_providers(session, 'sqlserver')
+            
+            # 3. Load facility configuration
+            load_facility_configuration_sqlserver(session, facility_ids)
+            
+            # 4. Load RVU data
+            load_rvu_data(session, 'sqlserver')
+            
+            # 5. Load sample claims if requested
+            if not args.skip_claims:
+                load_claims_data_sqlserver(session, facility_ids, provider_ids)
+            else:
+                print(">> Skipping claims data loading")
+            
+            session.commit()
+            session.close()
+            print(">> SQL Server data loading completed")
+            
+        except Exception as e:
+            print(f"Error loading SQL Server data: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+    
+    end_time = datetime.now()
+    duration = end_time - start_time
+    
+    print(f"\n=== SUMMARY ===")
+    print(f"Total time: {duration}")
+    print(f"Data loaded successfully!")
+    
+    if load_postgres:
+        print(f"\nPostgreSQL (claims_staging):")
+        print(f"   - {len(CPT_CODES)} CPT/RVU codes")
+        print(f"   - 8 Validation rules")
+        if not args.skip_claims:
+            print(f"   - 100,000 Claims with line items")
+    
+    if load_sqlserver:
+        print(f"\nSQL Server (smart_pro_claims):")
+        print(f"   - 5 Facilities with organizational hierarchy")
+        print(f"   - 200 Providers")
+        print(f"   - Facility configuration (financial classes, departments, etc.)")
+        print(f"   - {len(CPT_CODES)} CPT/RVU codes")
+        if not args.skip_claims:
+            print(f"   - 100,000 Claims with diagnoses and line items")
 
 if __name__ == "__main__":
     main()

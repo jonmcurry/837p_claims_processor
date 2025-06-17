@@ -455,16 +455,18 @@ class DatabaseSetup:
             console.print(f"[red]Sample data script not found: {self.sample_data_script}[/red]")
             return False
         
-        # PRIORITY: Use PostgreSQL for claims processing workflow when available
+        # Load sample data into configured databases
         if self.config.get('setup_postgres'):
             postgres_db = self.config.get('postgres_database', 'claims_staging')
             console.print(f"[green]>>> LOADING CLAIMS INTO POSTGRESQL: {postgres_db}[/green]")
             console.print("[blue]Claims will be loaded into public.claims table for processing workflow[/blue]")
-        elif self.config.get('setup_sqlserver'):
-            console.print(f"[yellow]>>> SQL Server configured but sample claims loader focuses on PostgreSQL[/yellow]")
-            console.print("[dim]Note: For claims processing workflow, setup PostgreSQL as well[/dim]")
-            return True  # Skip sample data for SQL Server only setup
-        else:
+        
+        if self.config.get('setup_sqlserver'):
+            sqlserver_db = self.config.get('sqlserver_database', 'smart_pro_claims')
+            console.print(f"[green]>>> LOADING FACILITY DATA INTO SQL SERVER: {sqlserver_db}[/green]")
+            console.print("[blue]Facilities, providers, and configuration data will be loaded[/blue]")
+        
+        if not self.config.get('setup_postgres') and not self.config.get('setup_sqlserver'):
             console.print("[red]No database configured for sample data loading[/red]")
             return False
         
