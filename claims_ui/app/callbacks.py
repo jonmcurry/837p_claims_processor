@@ -59,20 +59,31 @@ def register_callbacks(app):
         return [class_names["home"], class_names["analytics"], class_names["processed"], class_names["failed"]]
 
     # =========================================================================
-    # Dropdown Population Callbacks
+    # Dropdown Population Callbacks (SEPARATED FOR EACH PAGE)
     # =========================================================================
-    @app.callback(
-        [Output('facility-filter-pc', 'options'), Output('payer-filter-pc', 'options'),
-         Output('facility-filter-pm', 'options'), Output('facility-filter-ha', 'options'),
-         Output('facility-filter-fc', 'options'), Output('failure-category-filter-fc', 'options')],
-        [Input('url', 'pathname')]
-    )
-    def populate_all_filters(pathname):
-        """Populates all dropdowns with placeholder data when the app loads."""
+    @app.callback(Output('facility-filter-pm', 'options'), [Input('url', 'pathname')])
+    def populate_pm_filters(pathname):
+        if pathname != '/': raise PreventUpdate
+        return [{'label': 'Main General Hospital', 'value': 'fac-1'}, {'label': 'Downtown Clinic', 'value': 'fac-2'}]
+
+    @app.callback([Output('facility-filter-pc', 'options'), Output('payer-filter-pc', 'options')], [Input('url', 'pathname')])
+    def populate_pc_filters(pathname):
+        if pathname != '/processed': raise PreventUpdate
         facility_options = [{'label': 'Main General Hospital', 'value': 'fac-1'}, {'label': 'Downtown Clinic', 'value': 'fac-2'}]
         payer_options = [{'label': 'Blue Shield', 'value': 'pay-1'}, {'label': 'United Health', 'value': 'pay-2'}]
+        return facility_options, payer_options
+
+    @app.callback([Output('facility-filter-fc', 'options'), Output('failure-category-filter-fc', 'options')], [Input('url', 'pathname')])
+    def populate_fc_filters(pathname):
+        if pathname != '/failed': raise PreventUpdate
+        facility_options = [{'label': 'Main General Hospital', 'value': 'fac-1'}, {'label': 'Downtown Clinic', 'value': 'fac-2'}]
         failure_options = [{'label': 'Invalid Member ID', 'value': 'fail-1'}, {'label': 'Service Not Covered', 'value': 'fail-2'}]
-        return facility_options, payer_options, facility_options, facility_options, facility_options, failure_options
+        return facility_options, failure_options
+    
+    @app.callback(Output('facility-filter-ha', 'options'), [Input('url', 'pathname')])
+    def populate_ha_filters(pathname):
+        if pathname != '/analytics': raise PreventUpdate
+        return [{'label': 'Main General Hospital', 'value': 'fac-1'}, {'label': 'Downtown Clinic', 'value': 'fac-2'}]
 
     # =========================================================================
     # Main Dashboard Page Callbacks
@@ -84,27 +95,17 @@ def register_callbacks(app):
         [Input('url', 'pathname'), Input('apply-filters-pm-button', 'n_clicks')]
     )
     def update_processing_metrics(pathname, n_clicks):
-        """Updates all components on the main dashboard on page load or filter click."""
-        if pathname != '/':
-            raise PreventUpdate
-
-        # In a real app, you would fetch data here based on filters.
-        # For this placeholder, we always show the same data.
+        if pathname != '/': raise PreventUpdate
         kpi_data = [{'name': 'Total Claims', 'value': 12245}, {'name': 'Billed Amount', 'value': '3.2M'}, {'name': 'Acceptance %', 'value': '92%'}, {'name': 'Avg. Time', 'value': '1.8d'}]
         kpi_cards = [html.Div([html.H5(kpi['name']), html.P(kpi['value'])], className='kpi-card') for kpi in kpi_data]
-        
         trends_df = pd.DataFrame({'date': pd.to_datetime(['2023-05-01', '2023-05-02', '2023-05-03', '2023-05-04', '2023-05-05']),'claims_processed': [250, 310, 280, 350, 400]})
         daily_trends_fig = px.area(trends_df, x='date', y='claims_processed', title='Daily Claims Volume').update_layout(template='plotly_white')
-        
         facility_df = pd.DataFrame({'Facility': ['Main General', 'Downtown Clinic', 'Uptown Medical'], 'Billed Amount': [1.8, 1.4, 0.95]})
         facility_comp_fig = px.bar(facility_df, x='Facility', y='Billed Amount', title='Billed Amount by Facility (Millions)', text_auto='.2s').update_layout(template='plotly_white')
-        
         payer_df = pd.DataFrame({'Payer': ['Blue Shield', 'United Health', 'Aetna', 'Cigna'], 'Claims': [5000, 4500, 2745, 1900]})
         payer_dist_fig = px.pie(payer_df, names='Payer', values='Claims', title='Claims by Payer', hole=0.4).update_layout(template='plotly_white')
-        
         type_df = pd.DataFrame({'Claim Type': ['Professional', 'Institutional'], 'Count': [8500, 3745]})
         claim_type_fig = px.bar(type_df, x='Count', y='Claim Type', orientation='h', title='Claim Types', text_auto=True).update_layout(template='plotly_white')
-        
         return kpi_cards, daily_trends_fig, facility_comp_fig, payer_dist_fig, claim_type_fig
 
     # =========================================================================
@@ -115,10 +116,7 @@ def register_callbacks(app):
         [Input('url', 'pathname'), Input('apply-filters-pc-button', 'n_clicks')]
     )
     def update_processed_claims_table(pathname, n_clicks):
-        """Loads data into the processed claims table on page load or filter click."""
-        if pathname != '/processed':
-            raise PreventUpdate
-        
+        if pathname != '/processed': raise PreventUpdate
         cols = ["Claim ID", "Patient Name", "Billed Amount", "Paid Amount", "Payer", "Status"]
         columns = [{"name": i, "id": i.lower().replace(" ", "_")} for i in cols]
         placeholder_data = [
@@ -142,16 +140,12 @@ def register_callbacks(app):
         [Input('url', 'pathname'), Input('apply-filters-fc-button', 'n_clicks')]
     )
     def update_failed_claims_page(pathname, n_clicks):
-        if pathname != '/failed':
-            raise PreventUpdate
-
+        if pathname != '/failed': raise PreventUpdate
         cols = ["Claim ID", "Patient Name", "Failure Reason", "Facility"]
         columns = [{"name": i, "id": i.lower().replace(" ", "_")} for i in cols]
         placeholder_data = [{'claim_id': 'C-004', 'patient_name': 'Mary Major', 'failure_reason': 'Invalid Member ID', 'facility': 'Main General Hospital'}, {'claim_id': 'C-005', 'patient_name': 'David Copper', 'failure_reason': 'Service Not Covered', 'facility': 'Downtown Clinic'}]
-        
         reason_df = pd.DataFrame([{'Reason': 'Invalid Member ID', 'Count': 42}, {'Reason': 'Service Not Covered', 'Count': 25}, {'Reason': 'Duplicate Claim', 'Count': 15}])
         reason_fig = px.bar(reason_df, y='Reason', x='Count', title='Top Failure Reasons', orientation='h', text_auto=True).update_layout(template='plotly_white')
-        
         return placeholder_data, columns, reason_fig
 
     # =========================================================================
@@ -162,10 +156,7 @@ def register_callbacks(app):
         [Input('url', 'pathname'), Input('healthcare-analytics-subtabs', 'value'), Input('apply-filters-ha-button', 'n_clicks')]
     )
     def render_analytics_content(pathname, subtab, n_clicks):
-        if pathname != '/analytics':
-            raise PreventUpdate
-        
-        # Use placeholder data for now
+        if pathname != '/analytics': raise PreventUpdate
         if subtab == 'subtab-cpt':
             df = pd.DataFrame({'cpt_code': ['99213', '99214', '99396', '99203', '99212'], 'count': [500, 420, 310, 250, 180]})
             fig = px.bar(df, x='cpt_code', y='count', title=f'Top 5 CPT Codes', text_auto=True).update_layout(template='plotly_white')
@@ -174,7 +165,6 @@ def register_callbacks(app):
             df = pd.DataFrame({'dx_code': ['I10', 'E11.9', 'Z00.00', 'K21.9', 'M54.5'], 'count': [610, 550, 480, 320, 290]})
             fig = px.bar(df, x='dx_code', y='count', title=f'Top 5 Diagnosis Codes', text_auto=True).update_layout(template='plotly_white')
             return dcc.Graph(figure=fig)
-            
         return html.P(f"Placeholder content for {subtab}", style={'padding': '20px'})
         
     print("Callbacks registered successfully.")
