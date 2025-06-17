@@ -289,11 +289,48 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
     print("Loading facility financial classes...")
     
     # Get payer IDs
-    payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
-    payers = {row[1]: row[0] for row in payers_result.fetchall()}
-    
-    if not payers:
-        raise Exception("No payers found in core_standard_payers table. Database schema may not have loaded correctly.")
+    try:
+        payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
+        payers = {row[1]: row[0] for row in payers_result.fetchall()}
+        
+        if not payers:
+            print("Warning: No payers found in core_standard_payers table. Attempting to load standard payers...")
+            # Load standard payers if they don't exist
+            standard_payers = [
+                ('Medicare', '1', 'Government', 1),
+                ('Medicaid', '2', 'Government', 1),
+                ('BlueCross', '3', 'Commercial', 1),
+                ('Others', '4', 'Commercial', 1),
+                ('Self Payer', '5', 'Self-Pay', 1),
+                ('HMO', '6', 'Commercial', 1),
+                ('Tricare', '7', 'Government', 1),
+                ('Commercial', '8', 'Commercial', 1),
+                ('Workers Comp', '9', 'Workers Compensation', 1),
+                ('MC Advantage', '10', 'Government', 1)
+            ]
+            
+            for payer_name, payer_code, payer_type, active in standard_payers:
+                session.execute(text("""
+                    INSERT INTO dbo.core_standard_payers (payer_name, payer_code, payer_type, active)
+                    VALUES (:payer_name, :payer_code, :payer_type, :active)
+                """), {
+                    "payer_name": payer_name,
+                    "payer_code": payer_code,
+                    "payer_type": payer_type,
+                    "active": active
+                })
+            
+            session.commit()
+            print(">> Standard payers loaded successfully")
+            
+            # Re-query payers
+            payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
+            payers = {row[1]: row[0] for row in payers_result.fetchall()}
+            
+        print(f"Found {len(payers)} payers: {list(payers.keys())}")
+    except Exception as e:
+        print(f"Error accessing payers table: {e}")
+        raise
     
     financial_classes = [
         ('A', 'Medicare A', '1', 0.8500, 'HIGH', True, 'A01'),
