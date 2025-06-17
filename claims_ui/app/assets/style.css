@@ -2,19 +2,23 @@
    Global Styles & Variables
    ========================================================================== */
 :root {
-    --sidebar-bg: #2c3e50; /* Dark slate */
-    --sidebar-text: #ecf0f1; /* Light grey */
-    --sidebar-text-hover: #ffffff;
-    --sidebar-active-bg: #34495e; /* Slightly lighter slate */
-    --header-bg: #45b39d; /* Main accent color from image */
-    --content-bg: #e9ecef; /* Light background for content area */
-    --card-bg: #ffffff;
-    --card-border: #dee2e6;
-    --text-color: #343a40;
-    --text-muted: #6c757d;
-    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --card-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-    --card-border-radius: 6px;
+    --primary-font: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    --app-bg-color: #f0f4f7; /* Light blue-grey background */
+    --card-bg-color: #ffffff;
+    --text-color-primary: #2c3e50; /* Dark grey-blue for text */
+    --text-color-secondary: #5a6572;
+    --header-bg-color: #0a2540; /* Very dark blue for header */
+    --sidebar-bg-color: #001e3c; /* Slightly lighter or same as header for sidebar */
+    --header-text-color: #ffffff;
+    --sidebar-text-color: #c0c0c0; /* Lighter text for sidebar links */
+    --sidebar-active-link-color: #ffffff;
+    --primary-accent-color: #007bff; /* A vibrant blue for accents, tabs */
+    --border-color: #dfe6ec; /* Softer border for cards and elements */
+    --card-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    --card-hover-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    --kpi-value-color: var(--header-bg-color);
+    --header-height: 56px;
+    --sidebar-width: 260px;
 }
 
 html {
