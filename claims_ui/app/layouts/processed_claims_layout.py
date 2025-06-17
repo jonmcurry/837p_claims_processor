@@ -1,22 +1,22 @@
 from dash import dcc, html, dash_table
 
 def create_processed_claims_layout():
-    """Creates the layout for the Processed Claims Dashboard."""
+    """Creates the layout for the Processed Claims Dashboard using card styling."""
     return html.Div([
         # Filters Card
         html.Div([
-            html.H4("Processed Claims Filters"), # This H4 will be styled by .dashboard-card > h4
+            html.H4("Processed Claims Filters"), # Styled by .dashboard-card > h4
             html.Div([
                 dcc.Dropdown(
-                    id='facility-filter-pc',
-                    placeholder='Select Facility(s)...',
+                    id='facility-filter-pc', 
+                    placeholder='Select Facility(s)...', 
                     multi=True,
                 ),
-            ], className='form-element-wrapper'),
+            ], className='form-element-wrapper'), # Consistent spacing for form elements
             html.Div([
                 dcc.Dropdown(
-                    id='payer-filter-pc',
-                    placeholder='Select Payer(s)...',
+                    id='payer-filter-pc', 
+                    placeholder='Select Payer(s)...', 
                     multi=True,
                 ),
             ], className='form-element-wrapper'),
@@ -29,22 +29,25 @@ def create_processed_claims_layout():
                 ),
             ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-pc-button', n_clicks=0)
-        ], className='dashboard-card filter-section'),
+        ], className='dashboard-card'), # Applied .dashboard-card
 
         # Data Table Card
         html.Div([
-            # Optional: html.H5("Claims Data", className="card-header-title"), # Example of a card header title
+            # Optional: Use a card header for the table title
+            # html.Div(html.H4("Claims Data"), className="dashboard-card-header"),
+            # html.Div([ # Content wrapper if header is used
             dash_table.DataTable(
                 id='processed-claims-table',
-                columns=[],  # Populated by callback
-                data=[],     # Populated by callback
+                columns=[],
+                data=[],
                 # COMMON_DATATABLE_PROPS are applied in callbacks.py
             )
-        ], className='dashboard-card table-container'),
-
+            # ], className="dashboard-card-content") # if header is used
+        ], className='dashboard-card table-container'), # .table-container for specific table card needs
+        
         # Selected Row Details Card
         html.Div(
-            id='selected-claim-details-pc',
-            className='dashboard-card details-container' # Apply card style
-        )
+            id='selected-claim-details-pc', 
+             className='dashboard-card details-container' 
+        ) 
     ])

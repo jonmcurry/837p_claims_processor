@@ -1,7 +1,7 @@
 from dash import dcc, html
 
 def create_healthcare_analytics_layout():
-    """Creates the layout for the Healthcare Analytics Dashboard."""
+    """Creates the layout for the Healthcare Analytics Dashboard using card styling."""
     return html.Div([
         # Filters Card
         html.Div([
@@ -17,25 +17,23 @@ def create_healthcare_analytics_layout():
                     display_format='YYYY-MM-DD'
                 ),
             ], className='form-element-wrapper'),
-            # Wrap Input and Button in a div for better layout control if needed
             html.Div([
                 dcc.Input(
                     id='top-n-filter-ha',
                     type='number',
                     value=10,
                     placeholder='Top N items',
-                    style={'marginRight': '10px'} # Keep style if specific spacing needed
+                    style={'marginRight': '10px'}
                 ),
                 html.Button('Apply Filters', id='apply-filters-ha-button', n_clicks=0)
-            ], className='form-element-wrapper', style={'display': 'flex', 'alignItems': 'center'}), # Example flex styling
-        ], className='dashboard-card filter-section'),
+            ], className='form-element-wrapper', style={'display': 'flex', 'alignItems': 'center'}),
+        ], className='dashboard-card'),
 
-        # Sub-tabs for different analytics views
-        html.Div([ # Wrapper for sub-tabs to style them like the main tabs
+        html.Div([
             dcc.Tabs(
                 id='healthcare-analytics-subtabs',
                 value='subtab-cpt',
-                className='custom-tabs-container', # Use same class as main tabs for styling
+                className='custom-styled-tabs',
                 children=[
                     dcc.Tab(label='CPT Code Analysis', value='subtab-cpt'),
                     dcc.Tab(label='Diagnosis Code Analysis', value='subtab-dx'),
@@ -44,7 +42,10 @@ def create_healthcare_analytics_layout():
                     dcc.Tab(label='Provider Metrics', value='subtab-provider'),
                 ]
             )
-        ], className='tab-container-wrapper', style={'marginTop': '20px'}),
+        ], className='tab-wrapper-bar', style={'marginTop': '24px', 'marginBottom': '0px'}),
 
-        html.Div(id='healthcare-analytics-content', style={'marginTop': '0px'})
+        html.Div(
+            id='healthcare-analytics-content',
+            style={'paddingTop': '24px'}
+        )
     ])

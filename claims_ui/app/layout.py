@@ -3,19 +3,19 @@ from dash import dcc, html
 def create_main_layout():
     """
     Creates the main layout for the Dash application.
-    This version includes a styled header and tab navigation.
+    Features a sticky header and a styled tab bar.
     """
     return html.Div([
         html.Div([
             html.H1("Claims Analytics Dashboard")
-        ], className='app-header'),
+        ], className='app-header'), # Styled by CSS
 
-        # Wrapper for the tabs themselves to control their background and padding
+        # Wrapper for the tabs to style the bar they sit in
         html.Div([
             dcc.Tabs(
                 id='main-tabs', 
                 value='tab-processed-claims', 
-                className='custom-tabs-container', # For specific styling of the tab bar
+                className='custom-styled-tabs', # Targets dcc.Tabs and its children for styling
                 children=[
                     dcc.Tab(label='Processed Claims', value='tab-processed-claims'),
                     dcc.Tab(label='Failed Claims', value='tab-failed-claims'),
@@ -23,11 +23,10 @@ def create_main_layout():
                     dcc.Tab(label='Healthcare Analytics', value='tab-healthcare-analytics'),
                 ]
             )
-        ], className='tab-container-wrapper'), # This class styles the bar holding the tabs
+        ], className='tab-wrapper-bar'), # Styles the container of the dcc.Tabs
 
-        # Main content area where tab-specific layouts will be rendered
-        # This area will have its own padding defined by #main-content-area in CSS
-        html.Div(id='main-content-area') 
+        # Main content area where tab-specific layouts are rendered
+        html.Div(id='main-content-area') # Styled by CSS for padding etc.
     ])
 
 if __name__ == '__main__':

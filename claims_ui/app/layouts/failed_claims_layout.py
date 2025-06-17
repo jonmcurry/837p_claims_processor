@@ -1,7 +1,7 @@
 from dash import dcc, html, dash_table
 
 def create_failed_claims_layout():
-    """Creates the layout for the Failed Claims Dashboard."""
+    """Creates the layout for the Failed Claims Dashboard using card styling."""
     return html.Div([
         # Filters Card
         html.Div([
@@ -21,16 +21,18 @@ def create_failed_claims_layout():
                 ),
             ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-fc-button', n_clicks=0)
-        ], className='dashboard-card filter-section'),
+        ], className='dashboard-card'), # Applied .dashboard-card
 
         # Data Table Card
         html.Div([
+            # Optional: html.Div(html.H4("Failed Claims Data"), className="dashboard-card-header"),
             dash_table.DataTable(
                 id='failed-claims-table',
                 columns=[],
                 data=[],
                 # COMMON_DATATABLE_PROPS are applied in callbacks.py
             )
+            # Optional: ], className="dashboard-card-content")
         ], className='dashboard-card table-container'),
         
         # Selected Row Details Card
@@ -39,11 +41,9 @@ def create_failed_claims_layout():
             className='dashboard-card details-container' # Apply card style
         ),
         
-        html.Hr(), # Keep hr for visual separation if desired, or remove if cards are enough
-
-        # Graph Card
+        # Graph Card for Failure Analysis
         html.Div([
-            # html.H4("Failure Analysis", className="card-header-title"), # Title is set in graph by callback
+            # The graph title is set dynamically in the callback.
             dcc.Graph(id='failure-reason-bargraph-fc')
-        ], className='dashboard-card graph-container')
+        ], className='dashboard-card graph-container') 
     ])

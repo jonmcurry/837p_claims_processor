@@ -1,7 +1,7 @@
 from dash import dcc, html
 
 def create_processing_metrics_layout():
-    """Creates the layout for the Processing Metrics Dashboard."""
+    """Creates the layout for the Processing Metrics Dashboard using card styling."""
     return html.Div([
         # Filters Card
         html.Div([
@@ -24,24 +24,21 @@ def create_processing_metrics_layout():
                 ),
             ], className='form-element-wrapper'),
             html.Button('Apply Filters', id='apply-filters-pm-button', n_clicks=0)
-        ], className='dashboard-card filter-section'),
+        ], className='dashboard-card'), # Applied .dashboard-card
 
-        # KPIs - This div is styled by .kpi-summary-pm in CSS, items within it get .kpi-item (also .dashboard-card if needed)
-        html.Div(id='kpi-summary-pm', className='kpi-summary-pm'), 
+        # KPIs - This div is styled by .kpi-grid-container in CSS.
+        html.Div(id='kpi-summary-pm', className='kpi-grid-container'), 
         
         # Graphs in individual cards
         html.Div([
-            # Title is set in graph by callback
             dcc.Graph(id='daily-trends-graph-pm')
         ], className='dashboard-card graph-container'),
         
         html.Div([
-            # Title is set in graph by callback
             dcc.Graph(id='facility-comparison-graph-pm')
         ], className='dashboard-card graph-container'),
         
         html.Div([
-            # Title is set in graph by callback
             dcc.Graph(id='org-region-summary-graph-pm')
         ], className='dashboard-card graph-container')
     ])
