@@ -529,8 +529,8 @@ def load_validation_rules(session, db_type: str):
         for rule_name, rule_type, rule_condition, error_message, severity in validation_rules:
             session.execute(text("""
                 INSERT INTO validation_rules 
-                (rule_name, rule_type, rule_condition, error_message, severity, is_active)
-                VALUES (:rule_name, :rule_type, :rule_condition, :error_message, :severity, true)
+                (rule_name, rule_type, rule_condition, error_message, severity, is_active, created_at, updated_at)
+                VALUES (:rule_name, :rule_type, :rule_condition, :error_message, :severity, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (rule_name) DO UPDATE SET
                     rule_type = EXCLUDED.rule_type,
                     rule_condition = EXCLUDED.rule_condition,
