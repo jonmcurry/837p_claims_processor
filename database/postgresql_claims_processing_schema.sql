@@ -47,7 +47,7 @@ CREATE TABLE rvu_data (
 -- Business validation rules
 CREATE TABLE validation_rules (
     id SERIAL PRIMARY KEY,
-    rule_name VARCHAR(100) NOT NULL,
+    rule_name VARCHAR(100) NOT NULL UNIQUE,
     rule_type VARCHAR(50) NOT NULL,
     rule_condition JSONB NOT NULL,
     error_message TEXT NOT NULL,
@@ -341,6 +341,10 @@ CREATE INDEX idx_performance_metrics_service ON performance_metrics(service_name
 -- RVU data indexes
 CREATE INDEX CONCURRENTLY idx_rvu_data_status ON rvu_data(status, procedure_code);
 CREATE INDEX CONCURRENTLY idx_rvu_data_category ON rvu_data(category, subcategory);
+
+-- Validation rules indexes
+CREATE INDEX CONCURRENTLY idx_validation_rules_active ON validation_rules(is_active, rule_type);
+CREATE INDEX CONCURRENTLY idx_validation_rules_severity ON validation_rules(severity, is_active);
 
 -- Composite indexes for complex queries
 CREATE INDEX CONCURRENTLY idx_claims_composite_processing 
