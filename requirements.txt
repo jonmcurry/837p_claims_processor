@@ -1,0 +1,60 @@
+# Smart Pro Claims - Production Requirements
+# Generated from pyproject.toml
+
+# Core Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.25
+alembic>=1.13.1
+asyncpg>=0.29.0
+pymssql>=2.2.11
+pyodbc>=4.0.0
+
+# Caching & Queue
+redis[hiredis]>=5.0.1
+celery[redis]>=5.3.4
+aiocache[redis]>=0.12.2
+
+# Machine Learning
+numpy>=1.26.3
+pandas>=2.1.4
+scikit-learn>=1.4.0
+tensorflow>=2.15.0
+
+# Business Logic
+rule-engine>=4.1.0
+
+# Security
+cryptography>=42.0.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Monitoring & Observability
+prometheus-client>=0.19.0
+structlog>=24.1.0
+
+# HTTP Client
+httpx>=0.26.0
+tenacity>=8.2.3
+
+# Utilities
+orjson>=3.9.10
+python-multipart>=0.0.6
+email-validator>=2.1.0
+python-dateutil>=2.8.2
+pytz>=2023.3
+click>=8.1.7
+rich>=13.7.0
+psutil>=5.9.7
+aiofiles>=23.2.1
+
+# Sample Data Generation
+faker>=18.0.0
+
+# Performance Testing
+pytest-asyncio>=0.23.3
+locust>=2.20.0
