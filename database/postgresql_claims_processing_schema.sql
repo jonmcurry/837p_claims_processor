@@ -1,6 +1,6 @@
--- High-Performance PostgreSQL Schema for Claims Processing Staging Database
--- Optimized for 100,000+ claims/15 seconds processing target
--- HIPAA-compliant with encryption and audit logging
+-- PostgreSQL Claims Processing Schema
+-- Focused on claims staging and processing only
+-- Reference data (facilities, providers) remains in SQL Server
 
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -20,48 +20,28 @@ CREATE TYPE failure_category AS ENUM (
 
 CREATE TYPE claim_priority AS ENUM ('low', 'medium', 'high', 'critical');
 
--- Facilities lookup table
-CREATE TABLE facilities (
-    id SERIAL PRIMARY KEY,
-    facility_id VARCHAR(20) UNIQUE NOT NULL,
-    facility_name VARCHAR(200) NOT NULL,
-    npi VARCHAR(10) NOT NULL,
-    tax_id VARCHAR(20) NOT NULL,
-    address_line1 VARCHAR(200) NOT NULL,
-    address_line2 VARCHAR(200),
-    city VARCHAR(100) NOT NULL,
-    state VARCHAR(2) NOT NULL,
-    zip_code VARCHAR(10) NOT NULL,
-    phone VARCHAR(20),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Providers lookup table
-CREATE TABLE providers (
-    id SERIAL PRIMARY KEY,
-    npi VARCHAR(10) UNIQUE NOT NULL,
-    provider_name VARCHAR(200) NOT NULL,
-    specialty_code VARCHAR(10),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- RVU lookup table for procedure codes
+-- RVU lookup table for procedure codes (matches SQL Server schema)
 CREATE TABLE rvu_data (
-    id SERIAL PRIMARY KEY,
-    procedure_code VARCHAR(10) NOT NULL,
-    modifier VARCHAR(2),
-    year INTEGER NOT NULL,
-    work_rvu DECIMAL(8,4) NOT NULL,
-    practice_expense_rvu DECIMAL(8,4) NOT NULL,
-    malpractice_rvu DECIMAL(8,4) NOT NULL,
-    total_rvu DECIMAL(8,4) NOT NULL,
-    conversion_factor DECIMAL(8,4) DEFAULT 36.04,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    procedure_code VARCHAR(10) NOT NULL PRIMARY KEY,
+    description VARCHAR(500),
+    category VARCHAR(50),
+    subcategory VARCHAR(50),
+    work_rvu DECIMAL(8,4),
+    practice_expense_rvu DECIMAL(8,4),
+    malpractice_rvu DECIMAL(8,4),
+    total_rvu DECIMAL(8,4),
+    conversion_factor DECIMAL(8,2),
+    non_facility_pe_rvu DECIMAL(8,4),
+    facility_pe_rvu DECIMAL(8,4),
+    effective_date DATE,
+    end_date DATE,
+    status VARCHAR(20),
+    global_period VARCHAR(10),
+    professional_component BOOLEAN,
+    technical_component BOOLEAN,
+    bilateral_surgery BOOLEAN,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Business validation rules
@@ -81,7 +61,7 @@ CREATE TABLE validation_rules (
 CREATE TABLE batch_metadata (
     id BIGSERIAL PRIMARY KEY,
     batch_id VARCHAR(100) UNIQUE NOT NULL,
-    facility_id VARCHAR(20) REFERENCES facilities(facility_id),
+    facility_id VARCHAR(20) NOT NULL, -- Reference to SQL Server facilities
     source_system VARCHAR(50) NOT NULL,
     file_name VARCHAR(500),
     status processing_status DEFAULT 'pending' NOT NULL,
@@ -102,11 +82,11 @@ CREATE TABLE batch_metadata (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Main claims table (staging)
+-- Main claims table (staging for processing)
 CREATE TABLE claims (
     id BIGSERIAL PRIMARY KEY,
     claim_id VARCHAR(50) NOT NULL,
-    facility_id VARCHAR(20) NOT NULL REFERENCES facilities(facility_id),
+    facility_id VARCHAR(20) NOT NULL, -- Reference to SQL Server facilities
     patient_account_number VARCHAR(50) NOT NULL,
     medical_record_number VARCHAR(50),
     
@@ -133,10 +113,10 @@ CREATE TABLE claims (
     insurance_plan_id VARCHAR(50),
     subscriber_id VARCHAR(50),
     
-    -- Provider information
-    billing_provider_npi VARCHAR(10) NOT NULL REFERENCES providers(npi),
+    -- Provider information (references to SQL Server providers)
+    billing_provider_npi VARCHAR(10) NOT NULL,
     billing_provider_name VARCHAR(200) NOT NULL,
-    attending_provider_npi VARCHAR(10) REFERENCES providers(npi),
+    attending_provider_npi VARCHAR(10),
     attending_provider_name VARCHAR(200),
     
     -- Diagnosis codes
@@ -185,8 +165,8 @@ CREATE TABLE claim_line_items (
     units INTEGER NOT NULL,
     charge_amount DECIMAL(10,2) NOT NULL,
     
-    -- Provider information
-    rendering_provider_npi VARCHAR(10) REFERENCES providers(npi),
+    -- Provider information (references to SQL Server providers)
+    rendering_provider_npi VARCHAR(10),
     rendering_provider_name VARCHAR(200),
     
     -- RVU information
@@ -211,7 +191,7 @@ CREATE TABLE failed_claims (
     id BIGSERIAL PRIMARY KEY,
     original_claim_id BIGINT,
     claim_reference VARCHAR(50) NOT NULL,
-    facility_id VARCHAR(20) NOT NULL REFERENCES facilities(facility_id),
+    facility_id VARCHAR(20) NOT NULL, -- Reference to SQL Server facilities
     
     -- Failure information
     failure_category failure_category NOT NULL,
@@ -292,7 +272,7 @@ CREATE TABLE performance_metrics (
     unit VARCHAR(20) NOT NULL,
     
     -- Context
-    facility_id VARCHAR(20),
+    facility_id VARCHAR(20), -- Reference to SQL Server facilities
     batch_id VARCHAR(100),
     service_name VARCHAR(50) NOT NULL,
     
@@ -358,10 +338,9 @@ CREATE INDEX idx_audit_logs_phi_access ON audit_logs(accessed_phi, created_at);
 CREATE INDEX idx_performance_metrics_type_time ON performance_metrics(metric_type, recorded_at);
 CREATE INDEX idx_performance_metrics_service ON performance_metrics(service_name, recorded_at);
 
--- Lookup table indexes
-CREATE INDEX CONCURRENTLY idx_facilities_facility_id ON facilities(facility_id);
-CREATE INDEX CONCURRENTLY idx_providers_npi ON providers(npi);
-CREATE INDEX CONCURRENTLY idx_rvu_data_procedure_year ON rvu_data(procedure_code, year);
+-- RVU data indexes
+CREATE INDEX CONCURRENTLY idx_rvu_data_status ON rvu_data(status, procedure_code);
+CREATE INDEX CONCURRENTLY idx_rvu_data_category ON rvu_data(category, subcategory);
 
 -- Composite indexes for complex queries
 CREATE INDEX CONCURRENTLY idx_claims_composite_processing 
@@ -380,12 +359,6 @@ END;
 $$ language 'plpgsql';
 
 -- Apply update triggers to all tables with updated_at columns
-CREATE TRIGGER update_facilities_updated_at BEFORE UPDATE ON facilities
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_providers_updated_at BEFORE UPDATE ON providers
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_validation_rules_updated_at BEFORE UPDATE ON validation_rules
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -407,7 +380,7 @@ ALTER SYSTEM SET shared_buffers = '1GB';
 ALTER SYSTEM SET effective_cache_size = '3GB';
 ALTER SYSTEM SET work_mem = '16MB';
 ALTER SYSTEM SET maintenance_work_mem = '256MB';
-ALTER SYSTEM SET max_wal_size = '1GB';  -- Replaced deprecated checkpoint_segments
+ALTER SYSTEM SET max_wal_size = '1GB';
 ALTER SYSTEM SET wal_buffers = '16MB';
 ALTER SYSTEM SET default_statistics_target = 100;
 
@@ -423,4 +396,4 @@ ALTER SYSTEM SET log_connections = on;
 ALTER SYSTEM SET log_disconnections = on;
 ALTER SYSTEM SET log_statement = 'mod';
 
-COMMENT ON DATABASE postgres IS 'High-performance claims processing staging database optimized for 100k+ claims/15s throughput';
+COMMENT ON DATABASE postgres IS 'Claims processing staging database - reference data in SQL Server';

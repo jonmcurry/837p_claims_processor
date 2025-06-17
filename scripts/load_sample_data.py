@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Sample Data Loader for Smart Pro Claims Database
+Sample Data Loader for PostgreSQL Claims Staging Database
 
 This script loads comprehensive sample data including:
-- Organizational hierarchy (organizations, regions, facilities)
-- Facility configuration (financial classes, departments, coders, etc.)
-- Physicians and providers
+- Facilities
+- Providers
+- RVU data
+- Validation rules
 - 100,000 sample claims with realistic healthcare data
 
 Usage:
-    python scripts/load_sample_data.py --connection-string "mssql+pyodbc://user:pass@server/smart_pro_claims?driver=ODBC+Driver+17+for+SQL+Server"
+    python scripts/load_sample_data.py --connection-string "postgresql://claims_user:password@localhost:5432/claims_staging"
 """
 
 import argparse
@@ -19,10 +20,10 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Any
 
-import pyodbc
 from faker import Faker
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+import psycopg2
 
 # Initialize Faker for generating realistic data
 fake = Faker()
@@ -205,7 +206,7 @@ PHYSICIAN_SPECIALTIES = [
 ]
 
 def create_database_engine(connection_string: str):
-    """Create SQLAlchemy engine for SQL Server."""
+    """Create SQLAlchemy engine for PostgreSQL or SQL Server."""
     try:
         engine = create_engine(connection_string, echo=False)
         return engine
@@ -213,124 +214,206 @@ def create_database_engine(connection_string: str):
         print(f"Failed to create database engine: {e}")
         sys.exit(1)
 
+def get_database_type(connection_string: str) -> str:
+    """Detect database type from connection string."""
+    if 'postgresql://' in connection_string or 'postgres://' in connection_string:
+        return 'postgresql'
+    elif 'mssql+pyodbc://' in connection_string or 'Driver 17 for SQL Server' in connection_string:
+        return 'sqlserver'
+    else:
+        print(f"WARNING: Unable to detect database type from connection string: {connection_string}")
+        print("Defaulting to SQL Server. For PostgreSQL, use connection string starting with 'postgresql://'")
+        return 'sqlserver'
+
 def load_organizational_hierarchy(session):
-    """Load organizations, regions, and facilities."""
-    print("Loading organizational hierarchy...")
-    
-    # Organization 1 with regions
+    """Load organizations and regions for SQL Server."""
+    # Organization 1
     session.execute(text("""
-        INSERT INTO dbo.facility_organization (org_name, installed_date, active)
-        VALUES ('Regional Health System', GETDATE(), 1)
+        IF NOT EXISTS (SELECT 1 FROM dbo.facility_organization WHERE org_name = 'Regional Health System')
+            INSERT INTO dbo.facility_organization (org_name, installed_date, active)
+            VALUES ('Regional Health System', GETDATE(), 1)
     """))
     
-    session.execute(text("""
-        INSERT INTO dbo.facility_organization (org_name, installed_date, active)
-        VALUES ('Metro Medical Group', GETDATE(), 1)
-    """))
-    
-    # Get organization IDs
-    org1_result = session.execute(text("SELECT org_id FROM dbo.facility_organization WHERE org_name = 'Regional Health System'"))
-    org1_id = org1_result.fetchone()[0]
-    
-    org2_result = session.execute(text("SELECT org_id FROM dbo.facility_organization WHERE org_name = 'Metro Medical Group'"))
-    org2_id = org2_result.fetchone()[0]
+    # Get organization ID
+    org_result = session.execute(text("SELECT org_id FROM dbo.facility_organization WHERE org_name = 'Regional Health System'"))
+    org1_id = org_result.fetchone()[0]
     
     # Regions for Organization 1
     session.execute(text("""
-        INSERT INTO dbo.facility_region (region_name, org_id, active)
-        VALUES ('North Region', :org_id, 1)
+        IF NOT EXISTS (SELECT 1 FROM dbo.facility_region WHERE region_name = 'North Region')
+            INSERT INTO dbo.facility_region (region_name, org_id, active)
+            VALUES ('North Region', :org_id, 1)
     """), {"org_id": org1_id})
     
     session.execute(text("""
-        INSERT INTO dbo.facility_region (region_name, org_id, active)
-        VALUES ('South Region', :org_id, 1)
+        IF NOT EXISTS (SELECT 1 FROM dbo.facility_region WHERE region_name = 'South Region')
+            INSERT INTO dbo.facility_region (region_name, org_id, active)
+            VALUES ('South Region', :org_id, 1)
     """), {"org_id": org1_id})
     
-    # Get region IDs
-    region1_result = session.execute(text("SELECT region_id FROM dbo.facility_region WHERE region_name = 'North Region'"))
-    region1_id = region1_result.fetchone()[0]
+    session.commit()
+
+def load_facilities(session, db_type: str):
+    """Load sample facilities."""
+    print("Loading facilities...")
     
-    region2_result = session.execute(text("SELECT region_id FROM dbo.facility_region WHERE region_name = 'South Region'"))
-    region2_id = region2_result.fetchone()[0]
-    
-    # Facilities
-    facilities = [
-        ('FAC001', 'Facility A - North General Hospital', 250, 'Springfield', 'IL', region1_id, org1_id, 1),
-        ('FAC002', 'Facility B - South Regional Medical Center', 180, 'Metropolis', 'IL', region2_id, org1_id, 7),
-        ('FAC003', 'Facility C - Metro Downtown Clinic', 0, 'Chicago', 'IL', None, org2_id, 3),
-        ('FAC004', 'Facility D - Metro West Campus', 120, 'Naperville', 'IL', None, org2_id, 6),
-        ('FAC005', 'Facility E - Metro North Specialty Center', 80, 'Evanston', 'IL', None, org2_id, 9)
-    ]
-    
-    for facility_id, name, beds, city, state, region_id, org_id, fiscal_month in facilities:
-        session.execute(text("""
-            INSERT INTO dbo.facilities 
-            (facility_id, facility_name, installed_date, beds, city, state, updated_date, 
-             region_id, fiscal_month, org_id, active)
-            VALUES (:facility_id, :name, GETDATE(), :beds, :city, :state, GETDATE(),
-                    :region_id, :fiscal_month, :org_id, 1)
-        """), {
-            "facility_id": facility_id,
-            "name": name,
-            "beds": beds,
-            "city": city,
-            "state": state,
-            "region_id": region_id,
-            "fiscal_month": fiscal_month,
-            "org_id": org_id
-        })
+    if db_type == 'postgresql':
+        # PostgreSQL version - load into facilities table
+        facilities = [
+            ('FAC001', 'Springfield General Hospital', '1234567890', '11-1234567', '123 Main St', 'Springfield', 'IL', '62701'),
+            ('FAC002', 'Metropolis Regional Medical Center', '2345678901', '22-2345678', '456 Oak Ave', 'Metropolis', 'IL', '62960'),
+            ('FAC003', 'Chicago Downtown Clinic', '3456789012', '33-3456789', '789 State St', 'Chicago', 'IL', '60601'),
+            ('FAC004', 'Naperville West Campus', '4567890123', '44-4567890', '321 West St', 'Naperville', 'IL', '60540'),
+            ('FAC005', 'Evanston North Specialty Center', '5678901234', '55-5678901', '654 North Ave', 'Evanston', 'IL', '60201')
+        ]
+        
+        for facility_id, name, npi, tax_id, addr1, city, state, zip_code in facilities:
+            session.execute(text("""
+                INSERT INTO facilities 
+                (facility_id, facility_name, npi, tax_id, address_line_1, city, state, zip_code, active)
+                VALUES (:facility_id, :name, :npi, :tax_id, :addr1, :city, :state, :zip_code, true)
+                ON CONFLICT (facility_id) DO UPDATE SET
+                    facility_name = EXCLUDED.facility_name,
+                    npi = EXCLUDED.npi,
+                    tax_id = EXCLUDED.tax_id,
+                    address_line_1 = EXCLUDED.address_line_1,
+                    city = EXCLUDED.city,
+                    state = EXCLUDED.state,
+                    zip_code = EXCLUDED.zip_code,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "facility_id": facility_id,
+                "name": name,
+                "npi": npi,
+                "tax_id": tax_id,
+                "addr1": addr1,
+                "city": city,
+                "state": state,
+                "zip_code": zip_code
+            })
+    else:
+        # SQL Server version - load into dbo.facilities with correct schema
+        # Schema: facility_id, facility_name, installed_date, beds, city, state, updated_date, 
+        #         updated_by, region_id, fiscal_month, org_id, active
+        
+        # First, ensure we have organizations and regions
+        load_organizational_hierarchy(session)
+        
+        # Get organization and region IDs
+        org_result = session.execute(text("SELECT org_id FROM dbo.facility_organization WHERE org_name = 'Regional Health System'"))
+        org1_id = org_result.fetchone()[0]
+        
+        region_result = session.execute(text("SELECT region_id FROM dbo.facility_region WHERE region_name = 'North Region'"))
+        region1_id = region_result.fetchone()[0]
+        
+        region2_result = session.execute(text("SELECT region_id FROM dbo.facility_region WHERE region_name = 'South Region'"))
+        region2_id = region2_result.fetchone()[0]
+        
+        facilities = [
+            ('FAC001', 'Springfield General Hospital', 250, 'Springfield', 'IL', region1_id, org1_id, 1),
+            ('FAC002', 'Metropolis Regional Medical Center', 180, 'Metropolis', 'IL', region2_id, org1_id, 7), 
+            ('FAC003', 'Chicago Downtown Clinic', 0, 'Chicago', 'IL', None, org1_id, 3),
+            ('FAC004', 'Naperville West Campus', 120, 'Naperville', 'IL', None, org1_id, 6),
+            ('FAC005', 'Evanston North Specialty Center', 80, 'Evanston', 'IL', None, org1_id, 9)
+        ]
+        
+        for facility_id, name, beds, city, state, region_id, org_id, fiscal_month in facilities:
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.facilities WHERE facility_id = :facility_id)
+                    INSERT INTO dbo.facilities 
+                    (facility_id, facility_name, installed_date, beds, city, state, 
+                     updated_date, region_id, fiscal_month, org_id, active)
+                    VALUES (:facility_id, :name, GETDATE(), :beds, :city, :state, 
+                            GETDATE(), :region_id, :fiscal_month, :org_id, 1)
+                ELSE
+                    UPDATE dbo.facilities 
+                    SET facility_name = :name, beds = :beds, city = :city, state = :state,
+                        updated_date = GETDATE(), region_id = :region_id, 
+                        fiscal_month = :fiscal_month, org_id = :org_id
+                    WHERE facility_id = :facility_id
+            """), {
+                "facility_id": facility_id,
+                "name": name,
+                "beds": beds,
+                "city": city,
+                "state": state,
+                "region_id": region_id,
+                "fiscal_month": fiscal_month,
+                "org_id": org_id
+            })
     
     session.commit()
-    print(">> Organizational hierarchy loaded successfully")
+    print(">> Facilities loaded successfully")
     return ['FAC001', 'FAC002', 'FAC003', 'FAC004', 'FAC005']
 
-def load_facility_financial_classes(session, facility_ids: List[str]):
-    """Load financial classes for each facility."""
+def load_providers(session, db_type: str):
+    """Load sample providers."""
+    print("Loading providers...")
+    
+    provider_ids = []
+    for i in range(200):  # 200 providers
+        provider_id = f"PRV{i+1:06d}"
+        first_name = fake.first_name()
+        last_name = fake.last_name()
+        npi = f"{fake.random_number(digits=10)}"
+        specialty_code, specialty_name = random.choice(PHYSICIAN_SPECIALTIES)
+        
+        if db_type == 'postgresql':
+            session.execute(text("""
+                INSERT INTO providers 
+                (provider_id, first_name, last_name, npi, specialty_code, specialty_name, active)
+                VALUES (:provider_id, :first_name, :last_name, :npi, :specialty_code, :specialty_name, true)
+                ON CONFLICT (provider_id) DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    npi = EXCLUDED.npi,
+                    specialty_code = EXCLUDED.specialty_code,
+                    specialty_name = EXCLUDED.specialty_name,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "provider_id": provider_id,
+                "first_name": first_name,
+                "last_name": last_name,
+                "npi": npi,
+                "specialty_code": specialty_code,
+                "specialty_name": specialty_name
+            })
+        else:
+            # SQL Server version using physicians table
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.physicians WHERE rendering_provider_id = :provider_id)
+                    INSERT INTO dbo.physicians 
+                    (rendering_provider_id, last_name, first_name, npi, specialty_code, active)
+                    VALUES (:provider_id, :last_name, :first_name, :npi, :specialty_code, 1)
+                ELSE
+                    UPDATE dbo.physicians 
+                    SET last_name = :last_name, first_name = :first_name, 
+                        npi = :npi, specialty_code = :specialty_code
+                    WHERE rendering_provider_id = :provider_id
+            """), {
+                "provider_id": provider_id,
+                "first_name": first_name,
+                "last_name": last_name,
+                "npi": npi,
+                "specialty_code": specialty_code
+            })
+        
+        provider_ids.append(provider_id)
+    
+    session.commit()
+    print(">> Providers loaded successfully")
+    return provider_ids
+
+def load_facility_configuration_sqlserver(session, facility_ids: List[str]):
+    """Load facility-specific configuration for SQL Server."""
+    print("Loading facility configuration...")
+    
+    # Load financial classes
     print("Loading facility financial classes...")
     
     # Get payer IDs
-    try:
-        payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
-        payers = {row[1].strip(): row[0] for row in payers_result.fetchall()}
-        
-        if not payers:
-            print("Warning: No payers found in core_standard_payers table. Attempting to load standard payers...")
-            # Load standard payers if they don't exist
-            standard_payers = [
-                ('Medicare', '1', 'Government', 1),
-                ('Medicaid', '2', 'Government', 1),
-                ('BlueCross', '3', 'Commercial', 1),
-                ('Others', '4', 'Commercial', 1),
-                ('Self Payer', '5', 'Self-Pay', 1),
-                ('HMO', '6', 'Commercial', 1),
-                ('Tricare', '7', 'Government', 1),
-                ('Commercial', '8', 'Commercial', 1),
-                ('Workers Comp', '9', 'Workers Compensation', 1),
-                ('MC Advantage', '10', 'Government', 1)
-            ]
-            
-            for payer_name, payer_code, payer_type, active in standard_payers:
-                session.execute(text("""
-                    INSERT INTO dbo.core_standard_payers (payer_name, payer_code, payer_type, active)
-                    VALUES (:payer_name, :payer_code, :payer_type, :active)
-                """), {
-                    "payer_name": payer_name,
-                    "payer_code": payer_code,
-                    "payer_type": payer_type,
-                    "active": active
-                })
-            
-            session.commit()
-            print(">> Standard payers loaded successfully")
-            
-            # Re-query payers
-            payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
-            payers = {row[1].strip(): row[0] for row in payers_result.fetchall()}
-            
-        print(f"Found {len(payers)} payers: {list(payers.keys())}")
-    except Exception as e:
-        print(f"Error accessing payers table: {e}")
-        raise
+    payers_result = session.execute(text("SELECT payer_id, payer_code FROM dbo.core_standard_payers"))
+    payers = {row[1].strip(): row[0] for row in payers_result.fetchall()}
     
     financial_classes = [
         ('A', 'Medicare A', '1', 0.8500, 'HIGH', True, 'A01'),
@@ -348,12 +431,14 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
     for facility_id in facility_ids:
         for fc_id, fc_name, payer_code, rate, priority, auto_post, hcc in financial_classes:
             session.execute(text("""
-                INSERT INTO dbo.facility_financial_classes 
-                (facility_id, financial_class_id, financial_class_name, payer_id, 
-                 reimbursement_rate, processing_priority, auto_posting_enabled, 
-                 active, effective_date, HCC)
-                VALUES (:facility_id, :fc_id, :fc_name, :payer_id, :rate, :priority, 
-                        :auto_post, 1, DATEADD(YEAR, -1, GETDATE()), :hcc)
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_financial_classes 
+                              WHERE facility_id = :facility_id AND financial_class_id = :fc_id)
+                    INSERT INTO dbo.facility_financial_classes 
+                    (facility_id, financial_class_id, financial_class_name, payer_id, 
+                     reimbursement_rate, processing_priority, auto_posting_enabled, 
+                     active, effective_date, HCC)
+                    VALUES (:facility_id, :fc_id, :fc_name, :payer_id, :rate, :priority, 
+                            :auto_post, 1, DATEADD(YEAR, -1, GETDATE()), :hcc)
             """), {
                 "facility_id": facility_id,
                 "fc_id": fc_id,
@@ -365,19 +450,16 @@ def load_facility_financial_classes(session, facility_ids: List[str]):
                 "hcc": hcc
             })
     
-    session.commit()
-    print(">> Facility financial classes loaded successfully")
-
-def load_facility_place_of_service(session, facility_ids: List[str]):
-    """Load place of service codes for each facility."""
+    # Load place of service codes
     print("Loading facility place of service codes...")
-    
     for facility_id in facility_ids:
         for pos_code, pos_name, origin in PLACE_OF_SERVICE_CODES:
             session.execute(text("""
-                INSERT INTO dbo.facility_place_of_service 
-                (facility_id, place_of_service, place_of_service_name, origin, active)
-                VALUES (:facility_id, :pos_code, :pos_name, :origin, 1)
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_place_of_service 
+                              WHERE facility_id = :facility_id AND place_of_service = :pos_code)
+                    INSERT INTO dbo.facility_place_of_service 
+                    (facility_id, place_of_service, place_of_service_name, origin, active)
+                    VALUES (:facility_id, :pos_code, :pos_name, :origin, 1)
             """), {
                 "facility_id": facility_id,
                 "pos_code": pos_code,
@@ -385,33 +467,25 @@ def load_facility_place_of_service(session, facility_ids: List[str]):
                 "origin": origin
             })
     
-    session.commit()
-    print(">> Facility place of service codes loaded successfully")
-
-def load_facility_departments(session, facility_ids: List[str]):
-    """Load departments for each facility."""
+    # Load departments
     print("Loading facility departments...")
-    
     for facility_id in facility_ids:
         for i, dept_name in enumerate(DEPARTMENTS, 1):
             dept_code = f"DEPT{i:03d}"
             session.execute(text("""
-                INSERT INTO dbo.facility_departments 
-                (department_code, department_name, facility_id, active)
-                VALUES (:dept_code, :dept_name, :facility_id, 1)
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_departments 
+                              WHERE facility_id = :facility_id AND department_code = :dept_code)
+                    INSERT INTO dbo.facility_departments 
+                    (department_code, department_name, facility_id, active)
+                    VALUES (:dept_code, :dept_name, :facility_id, 1)
             """), {
                 "dept_code": dept_code,
                 "dept_name": dept_name,
                 "facility_id": facility_id
             })
     
-    session.commit()
-    print(">> Facility departments loaded successfully")
-
-def load_facility_coders(session, facility_ids: List[str]):
-    """Load coders for each facility."""
+    # Load coders
     print("Loading facility coders...")
-    
     for facility_id in facility_ids:
         # 3-5 coders per facility
         num_coders = random.randint(3, 5)
@@ -421,9 +495,11 @@ def load_facility_coders(session, facility_ids: List[str]):
             last_name = fake.last_name()
             
             session.execute(text("""
-                INSERT INTO dbo.facility_coders 
-                (facility_id, coder_id, coder_first_name, coder_last_name, active)
-                VALUES (:facility_id, :coder_id, :first_name, :last_name, 1)
+                IF NOT EXISTS (SELECT 1 FROM dbo.facility_coders 
+                              WHERE facility_id = :facility_id AND coder_id = :coder_id)
+                    INSERT INTO dbo.facility_coders 
+                    (facility_id, coder_id, coder_first_name, coder_last_name, active)
+                    VALUES (:facility_id, :coder_id, :first_name, :last_name, 1)
             """), {
                 "facility_id": facility_id,
                 "coder_id": coder_id,
@@ -432,120 +508,722 @@ def load_facility_coders(session, facility_ids: List[str]):
             })
     
     session.commit()
-    print(">> Facility coders loaded successfully")
+    print(">> Facility configuration loaded successfully")
 
-def load_physicians(session):
-    """Load physicians/providers."""
-    print("Loading physicians...")
+def load_validation_rules(session, db_type: str):
+    """Load sample validation rules."""
+    print("Loading validation rules...")
     
-    physicians = []
-    for i in range(200):  # 200 physicians
-        provider_id = f"PRV{i+1:06d}"
-        first_name = fake.first_name()
-        last_name = fake.last_name()
-        npi = f"{fake.random_number(digits=10)}"
-        specialty_code, specialty_name = random.choice(PHYSICIAN_SPECIALTIES)
+    if db_type == 'postgresql':
+        validation_rules = [
+            ('REQUIRED_FIELDS', 'field_validation', '{"required_fields": ["patient_first_name", "patient_last_name", "patient_date_of_birth"]}', 'All required claim fields must be present', 'error'),
+            ('NPI_FORMAT', 'format_validation', '{"field": "billing_provider_npi", "pattern": "^[0-9]{10}$"}', 'NPI must be exactly 10 digits', 'error'),
+            ('DATE_SEQUENCE', 'business_rule', '{"rule": "admission_date <= discharge_date"}', 'Admission date must be before or equal to discharge date', 'error'),
+            ('PROCEDURE_CODE', 'reference_validation', '{"field": "procedure_code", "reference_table": "rvu_data"}', 'Procedure code must exist in RVU reference table', 'error'),
+            ('DIAGNOSIS_CODE', 'format_validation', '{"field": "primary_diagnosis_code", "pattern": "^[A-Z][0-9]{2}(\\.[0-9X]{1,2})?$"}', 'Diagnosis code must be valid ICD-10 format', 'error'),
+            ('CHARGE_AMOUNT', 'business_rule', '{"rule": "total_charges > 0"}', 'Total charges must be positive', 'warning'),
+            ('DUPLICATE_CLAIM', 'uniqueness_check', '{"fields": ["claim_id", "facility_id"]}', 'Claim ID must be unique within facility', 'error'),
+            ('PATIENT_AGE', 'business_rule', '{"rule": "age_appropriate_for_procedure"}', 'Patient age should be appropriate for procedure', 'warning')
+        ]
         
-        session.execute(text("""
-            INSERT INTO dbo.physicians 
-            (rendering_provider_id, last_name, first_name, npi, specialty_code, active)
-            VALUES (:provider_id, :last_name, :first_name, :npi, :specialty_code, 1)
-        """), {
-            "provider_id": provider_id,
-            "last_name": last_name,
-            "first_name": first_name,
-            "npi": npi,
-            "specialty_code": specialty_code
-        })
+        for rule_name, rule_type, rule_condition, error_message, severity in validation_rules:
+            session.execute(text("""
+                INSERT INTO validation_rules 
+                (rule_name, rule_type, rule_condition, error_message, severity, is_active)
+                VALUES (:rule_name, :rule_type, :rule_condition, :error_message, :severity, true)
+                ON CONFLICT (rule_name) DO UPDATE SET
+                    rule_type = EXCLUDED.rule_type,
+                    rule_condition = EXCLUDED.rule_condition,
+                    error_message = EXCLUDED.error_message,
+                    severity = EXCLUDED.severity,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "rule_name": rule_name,
+                "rule_type": rule_type,
+                "rule_condition": rule_condition,
+                "error_message": error_message,
+                "severity": severity
+            })
         
-        physicians.append(provider_id)
-    
-    session.commit()
-    print(">> Physicians loaded successfully")
-    return physicians
+        session.commit()
+        print(">> Validation rules loaded successfully")
+    else:
+        print(">> Skipping validation rules (SQL Server version doesn't include this table)")
 
-def load_rvu_data(session):
+def load_rvu_data(session, db_type: str):
     """Load RVU data for CPT codes."""
     print("Loading RVU data...")
     
     for cpt_code, description, work_rvu, pe_rvu, mp_rvu, total_rvu in CPT_CODES:
-        # Determine category based on CPT code
-        if cpt_code.startswith('99'):
-            category = 'Evaluation and Management'
-            subcategory = 'Office Visits'
-        elif cpt_code.startswith('93'):
-            category = 'Medicine'
-            subcategory = 'Cardiovascular'
-        elif cpt_code.startswith('36'):
-            category = 'Surgery'
-            subcategory = 'Venipuncture'
-        elif cpt_code.startswith('8'):
-            category = 'Pathology and Laboratory'
-            subcategory = 'Chemistry'
-        elif cpt_code.startswith('7'):
-            category = 'Radiology'
-            if 'CT' in description:
-                subcategory = 'Computed Tomography'
-            elif 'MRI' in description:
-                subcategory = 'Magnetic Resonance Imaging'
-            elif 'ultrasound' in description.lower():
-                subcategory = 'Ultrasound'
+        if db_type == 'postgresql':
+            # Determine category based on CPT code (matches SQL Server logic)
+            if cpt_code.startswith('99'):
+                category = 'Evaluation and Management'
+                subcategory = 'Office Visits'
+            elif cpt_code.startswith('93'):
+                category = 'Medicine'
+                subcategory = 'Cardiovascular'
+            elif cpt_code.startswith('36'):
+                category = 'Surgery'
+                subcategory = 'Venipuncture'
+            elif cpt_code.startswith('8'):
+                category = 'Pathology and Laboratory'
+                subcategory = 'Chemistry'
+            elif cpt_code.startswith('7'):
+                category = 'Radiology'
+                if 'CT' in description:
+                    subcategory = 'Computed Tomography'
+                elif 'MRI' in description:
+                    subcategory = 'Magnetic Resonance Imaging'
+                elif 'ultrasound' in description.lower():
+                    subcategory = 'Ultrasound'
+                else:
+                    subcategory = 'Diagnostic Radiology'
+            elif cpt_code.startswith('4'):
+                category = 'Surgery'
+                subcategory = 'Digestive System'
+            elif cpt_code.startswith('1'):
+                category = 'Surgery'
+                subcategory = 'Integumentary System'
+            elif cpt_code.startswith('2'):
+                category = 'Surgery'
+                subcategory = 'Musculoskeletal System'
+            elif cpt_code.startswith('9'):
+                category = 'Medicine'
+                subcategory = 'Immunizations'
             else:
-                subcategory = 'Diagnostic Radiology'
-        elif cpt_code.startswith('4'):
-            category = 'Surgery'
-            subcategory = 'Endoscopy'
-        elif cpt_code.startswith('1') or cpt_code.startswith('2'):
-            category = 'Surgery'
-            subcategory = 'Integumentary System'
-        elif cpt_code.startswith('9'):
-            category = 'Medicine'
-            subcategory = 'Immunizations'
-        elif cpt_code.startswith('J'):
-            category = 'Medicine'
-            subcategory = 'Injections'
+                category = 'Medicine'
+                subcategory = 'Other'
+            
+            session.execute(text("""
+                INSERT INTO rvu_data 
+                (procedure_code, description, category, subcategory, work_rvu, practice_expense_rvu, 
+                 malpractice_rvu, total_rvu, conversion_factor, status, created_at, updated_at)
+                VALUES (:code, :desc, :category, :subcategory, :work_rvu, :pe_rvu, :mp_rvu, :total_rvu, 36.04, 'Active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (procedure_code) DO UPDATE SET
+                    description = EXCLUDED.description,
+                    category = EXCLUDED.category,
+                    subcategory = EXCLUDED.subcategory,
+                    work_rvu = EXCLUDED.work_rvu,
+                    practice_expense_rvu = EXCLUDED.practice_expense_rvu,
+                    malpractice_rvu = EXCLUDED.malpractice_rvu,
+                    total_rvu = EXCLUDED.total_rvu,
+                    updated_at = CURRENT_TIMESTAMP
+            """), {
+                "code": cpt_code,
+                "desc": description,
+                "category": category,
+                "subcategory": subcategory,
+                "work_rvu": work_rvu,
+                "pe_rvu": pe_rvu,
+                "mp_rvu": mp_rvu,
+                "total_rvu": total_rvu
+            })
         else:
-            category = 'Medicine'
-            subcategory = 'Other'
-        
-        session.execute(text("""
-            INSERT INTO dbo.rvu_data 
-            (procedure_code, description, category, subcategory, work_rvu, 
-             practice_expense_rvu, malpractice_rvu, total_rvu, conversion_factor,
-             non_facility_pe_rvu, facility_pe_rvu, effective_date, status,
-             global_period, professional_component, technical_component, bilateral_surgery)
-            VALUES (:code, :desc, :category, :subcategory, :work_rvu, :pe_rvu, :mp_rvu, 
-                    :total_rvu, 34.6062, :pe_rvu, :pe_rvu, DATEADD(YEAR, -1, GETDATE()), 
-                    'Active', '000', 1, 0, 0)
-        """), {
-            "code": cpt_code,
-            "desc": description,
-            "category": category,
-            "subcategory": subcategory,
-            "work_rvu": work_rvu,
-            "pe_rvu": pe_rvu,
-            "mp_rvu": mp_rvu,
-            "total_rvu": total_rvu
-        })
+            # SQL Server version with more fields
+            # Determine category based on CPT code
+            if cpt_code.startswith('99'):
+                category = 'Evaluation and Management'
+                subcategory = 'Office Visits'
+            elif cpt_code.startswith('93'):
+                category = 'Medicine'
+                subcategory = 'Cardiovascular'
+            elif cpt_code.startswith('36'):
+                category = 'Surgery'
+                subcategory = 'Venipuncture'
+            elif cpt_code.startswith('8'):
+                category = 'Pathology and Laboratory'
+                subcategory = 'Chemistry'
+            elif cpt_code.startswith('7'):
+                category = 'Radiology'
+                if 'CT' in description:
+                    subcategory = 'Computed Tomography'
+                elif 'MRI' in description:
+                    subcategory = 'Magnetic Resonance Imaging'
+                elif 'ultrasound' in description.lower():
+                    subcategory = 'Ultrasound'
+                else:
+                    subcategory = 'Diagnostic Radiology'
+            else:
+                category = 'Medicine'
+                subcategory = 'Other'
+            
+            session.execute(text("""
+                IF NOT EXISTS (SELECT 1 FROM dbo.rvu_data WHERE procedure_code = :code)
+                    INSERT INTO dbo.rvu_data 
+                    (procedure_code, description, category, subcategory, work_rvu, 
+                     practice_expense_rvu, malpractice_rvu, total_rvu, conversion_factor,
+                     non_facility_pe_rvu, facility_pe_rvu, effective_date, status,
+                     global_period, professional_component, technical_component, bilateral_surgery)
+                    VALUES (:code, :desc, :category, :subcategory, :work_rvu, :pe_rvu, :mp_rvu, 
+                            :total_rvu, 34.6062, :pe_rvu, :pe_rvu, DATEADD(YEAR, -1, GETDATE()), 
+                            'Active', '000', 1, 0, 0)
+                ELSE
+                    UPDATE dbo.rvu_data 
+                    SET description = :desc, category = :category, subcategory = :subcategory,
+                        work_rvu = :work_rvu, practice_expense_rvu = :pe_rvu, 
+                        malpractice_rvu = :mp_rvu, total_rvu = :total_rvu
+                    WHERE procedure_code = :code
+            """), {
+                "code": cpt_code,
+                "desc": description,
+                "category": category,
+                "subcategory": subcategory,
+                "work_rvu": work_rvu,
+                "pe_rvu": pe_rvu,
+                "mp_rvu": mp_rvu,
+                "total_rvu": total_rvu
+            })
     
     session.commit()
     print(">> RVU data loaded successfully")
 
-def load_claims_data(session, facility_ids: List[str], physician_ids: List[str]):
-    """Load 100,000 sample claims with line items and diagnoses."""
-    print("Loading 100,000 sample claims...")
+
+def load_claims_data(session, facility_ids: List[str], provider_ids: List[str]):
+    """Load 100,000 sample claims with line items into PostgreSQL public.claims."""
+    print("Loading 100,000 sample claims into PostgreSQL...")
+    
+    batch_id = f"BATCH_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    total_claims = 100000
+    
+    # Create batch metadata first and get the ID
+    session.execute(text("""
+        INSERT INTO batch_metadata 
+        (batch_id, facility_id, source_system, file_name, total_claims, 
+         submitted_by, status, created_at)
+        VALUES (:batch_id, :facility_id, 'sample_data_generator', 'load_sample_data.py', 
+                :total_claims, 'system', 'processing'::processing_status, CURRENT_TIMESTAMP)
+    """), {
+        "batch_id": batch_id,
+        "facility_id": facility_ids[0],  # Use first facility for batch
+        "total_claims": total_claims
+    })
+    
+    # Get the batch metadata ID
+    batch_result = session.execute(text("SELECT id FROM batch_metadata WHERE batch_id = :batch_id"), 
+                                  {"batch_id": batch_id})
+    batch_metadata_id = batch_result.fetchone()[0]
+    
+    # Insurance types for claims
+    insurance_types = [
+        'Medicare',
+        'Medicaid', 
+        'Commercial',
+        'Medicare Advantage',
+        'Tricare',
+        'Workers Compensation',
+        'Self Pay'
+    ]
+    
+    # Financial classes
+    financial_classes = [
+        'Medicare Part A',
+        'Medicare Part B', 
+        'Medicaid',
+        'Commercial HMO',
+        'Commercial PPO',
+        'Self Pay',
+        'Workers Comp'
+    ]
+    
+    batch_size = 1000
+    
+    for batch_start in range(0, total_claims, batch_size):
+        batch_end = min(batch_start + batch_size, total_claims)
+        
+        for i in range(batch_start, batch_end):
+            # Generate claim data
+            facility_id = random.choice(facility_ids)
+            claim_id = f"CLM{i+1:08d}"
+            patient_account = f"PAT{i+1:08d}"
+            mrn = f"MRN{fake.random_number(digits=8)}"
+            
+            # Patient demographics
+            first_name = fake.first_name()
+            last_name = fake.last_name()
+            middle_name = fake.first_name() if random.random() < 0.3 else None
+            
+            # Age distribution
+            age = random.randint(1, 95)
+            dob = fake.date_of_birth(minimum_age=age, maximum_age=age)
+            
+            # Service dates
+            service_from_date = fake.date_between(start_date='-2y', end_date='today')
+            service_to_date = service_from_date + timedelta(days=random.randint(0, 7))
+            admission_date = service_from_date
+            discharge_date = service_to_date
+            
+            # Financial information
+            financial_class = random.choice(financial_classes)
+            insurance_type = random.choice(insurance_types)
+            subscriber_id = f"SUB{fake.random_number(digits=9)}"
+            insurance_plan_id = f"PLAN{fake.random_number(digits=6)}"
+            
+            # Provider information - get a random provider
+            billing_provider_id = random.choice(provider_ids)
+            attending_provider_id = random.choice(provider_ids)
+            
+            # Get provider NPIs from the providers we loaded
+            billing_provider_result = session.execute(text(
+                "SELECT npi, first_name, last_name FROM providers WHERE provider_id = :provider_id"
+            ), {"provider_id": billing_provider_id})
+            billing_provider_row = billing_provider_result.fetchone()
+            billing_provider_npi = billing_provider_row[0]
+            billing_provider_name = f"{billing_provider_row[1]} {billing_provider_row[2]}"
+            
+            attending_provider_result = session.execute(text(
+                "SELECT npi, first_name, last_name FROM providers WHERE provider_id = :provider_id"
+            ), {"provider_id": attending_provider_id})
+            attending_provider_row = attending_provider_result.fetchone()
+            attending_provider_npi = attending_provider_row[0] 
+            attending_provider_name = f"{attending_provider_row[1]} {attending_provider_row[2]}"
+            
+            # Diagnosis codes
+            num_diagnoses = random.randint(1, 4)
+            selected_diagnoses = random.sample(DIAGNOSIS_CODES, num_diagnoses)
+            diagnosis_codes = [dx[0] for dx in selected_diagnoses]
+            primary_diagnosis = diagnosis_codes[0]
+            
+            # Calculate total charges from line items first
+            total_charges = Decimal('0')
+            line_items = []
+            
+            # Generate line items (1-6 per claim)
+            num_line_items = random.randint(1, 6)
+            selected_cpts = random.sample(CPT_CODES, min(num_line_items, len(CPT_CODES)))
+            
+            for line_num, (cpt_code, cpt_desc, work_rvu, pe_rvu, mp_rvu, total_rvu) in enumerate(selected_cpts, 1):
+                units = random.randint(1, 3)
+                
+                # Calculate charges
+                conversion_factor = Decimal('36.04')
+                charge_amount = round(Decimal(str(total_rvu)) * conversion_factor * units * Decimal(str(random.uniform(0.8, 1.2))), 2)
+                total_charges += charge_amount
+                
+                # Expected reimbursement (percentage of charges)
+                reimbursement_rate = random.uniform(0.6, 0.95)
+                expected_reimbursement = round(charge_amount * Decimal(str(reimbursement_rate)), 2)
+                
+                line_items.append({
+                    "line_number": line_num,
+                    "service_date": service_from_date,
+                    "procedure_code": cpt_code,
+                    "procedure_description": cpt_desc,
+                    "units": units,
+                    "charge_amount": charge_amount,
+                    "rendering_provider_npi": billing_provider_npi,
+                    "rendering_provider_name": billing_provider_name,
+                    "rvu_work": Decimal(str(work_rvu)),
+                    "rvu_practice_expense": Decimal(str(pe_rvu)),
+                    "rvu_malpractice": Decimal(str(mp_rvu)),
+                    "rvu_total": Decimal(str(total_rvu)),
+                    "expected_reimbursement": expected_reimbursement,
+                    "diagnosis_pointers": [1, 2] if len(diagnosis_codes) > 1 else [1]
+                })
+            
+            # Expected reimbursement for claim (sum of line items)
+            expected_reimbursement = sum(item["expected_reimbursement"] for item in line_items)
+            
+            # Insert claim into PostgreSQL claims table
+            claim_insert_result = session.execute(text("""
+                INSERT INTO claims (
+                    claim_id, facility_id, patient_account_number, medical_record_number,
+                    patient_first_name, patient_last_name, patient_middle_name, patient_date_of_birth,
+                    admission_date, discharge_date, service_from_date, service_to_date,
+                    financial_class, total_charges, expected_reimbursement,
+                    insurance_type, insurance_plan_id, subscriber_id,
+                    billing_provider_npi, billing_provider_name, 
+                    attending_provider_npi, attending_provider_name,
+                    primary_diagnosis_code, diagnosis_codes,
+                    processing_status, priority, correlation_id, batch_id,
+                    created_at, updated_at
+                )
+                VALUES (
+                    :claim_id, :facility_id, :patient_account_number, :medical_record_number,
+                    :patient_first_name, :patient_last_name, :patient_middle_name, :patient_date_of_birth,
+                    :admission_date, :discharge_date, :service_from_date, :service_to_date,
+                    :financial_class, :total_charges, :expected_reimbursement,
+                    :insurance_type, :insurance_plan_id, :subscriber_id,
+                    :billing_provider_npi, :billing_provider_name,
+                    :attending_provider_npi, :attending_provider_name,
+                    :primary_diagnosis_code, :diagnosis_codes,
+                    'pending'::processing_status, 'medium'::claim_priority, :correlation_id, :batch_id,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                RETURNING id
+            """), {
+                "claim_id": claim_id,
+                "facility_id": facility_id,
+                "patient_account_number": patient_account,
+                "medical_record_number": mrn,
+                "patient_first_name": first_name,
+                "patient_last_name": last_name,
+                "patient_middle_name": middle_name,
+                "patient_date_of_birth": dob,
+                "admission_date": admission_date,
+                "discharge_date": discharge_date,
+                "service_from_date": service_from_date,
+                "service_to_date": service_to_date,
+                "financial_class": financial_class,
+                "total_charges": total_charges,
+                "expected_reimbursement": expected_reimbursement,
+                "insurance_type": insurance_type,
+                "insurance_plan_id": insurance_plan_id,
+                "subscriber_id": subscriber_id,
+                "billing_provider_npi": billing_provider_npi,
+                "billing_provider_name": billing_provider_name,
+                "attending_provider_npi": attending_provider_npi,
+                "attending_provider_name": attending_provider_name,
+                "primary_diagnosis_code": primary_diagnosis,
+                "diagnosis_codes": diagnosis_codes,
+                "correlation_id": f"CORR_{i+1:08d}",
+                "batch_id": batch_metadata_id
+            })
+            
+            # Get the inserted claim ID
+            inserted_claim_id = claim_insert_result.fetchone()[0]
+            
+            # Insert line items for this claim
+            for line_item in line_items:
+                session.execute(text("""
+                    INSERT INTO claim_line_items (
+                        claim_id, line_number, service_date, procedure_code, procedure_description,
+                        units, charge_amount, rendering_provider_npi, rendering_provider_name,
+                        rvu_work, rvu_practice_expense, rvu_malpractice, rvu_total,
+                        expected_reimbursement, diagnosis_pointers,
+                        created_at, updated_at
+                    )
+                    VALUES (
+                        :claim_id, :line_number, :service_date, :procedure_code, :procedure_description,
+                        :units, :charge_amount, :rendering_provider_npi, :rendering_provider_name,
+                        :rvu_work, :rvu_practice_expense, :rvu_malpractice, :rvu_total,
+                        :expected_reimbursement, :diagnosis_pointers,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                """), {
+                    "claim_id": inserted_claim_id,
+                    "line_number": line_item["line_number"],
+                    "service_date": line_item["service_date"],
+                    "procedure_code": line_item["procedure_code"],
+                    "procedure_description": line_item["procedure_description"],
+                    "units": line_item["units"],
+                    "charge_amount": line_item["charge_amount"],
+                    "rendering_provider_npi": line_item["rendering_provider_npi"],
+                    "rendering_provider_name": line_item["rendering_provider_name"],
+                    "rvu_work": line_item["rvu_work"],
+                    "rvu_practice_expense": line_item["rvu_practice_expense"],
+                    "rvu_malpractice": line_item["rvu_malpractice"],
+                    "rvu_total": line_item["rvu_total"],
+                    "expected_reimbursement": line_item["expected_reimbursement"],
+                    "diagnosis_pointers": line_item["diagnosis_pointers"]
+                })
+        
+        # Commit batch
+        if (batch_end - batch_start) % 100 == 0:  # Commit every 100 claims
+            session.commit()
+        
+        # Progress indicator
+        progress = ((batch_end) / total_claims) * 100
+        print(f"  Progress: {progress:.1f}% ({batch_end:,}/{total_claims:,} claims)")
+    
+    # Final commit
+    session.commit()
+    
+    # Update batch metadata to completed
+    session.execute(text("""
+        UPDATE batch_metadata 
+        SET status = 'completed'::processing_status,
+            processed_claims = :total_claims,
+            completed_at = CURRENT_TIMESTAMP,
+            processing_time_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - submitted_at))
+        WHERE batch_id = :batch_id
+    """), {
+        "total_claims": total_claims,
+        "batch_id": batch_id
+    })
+    
+    session.commit()
+    print(">> Claims data loaded successfully into PostgreSQL public.claims")
+
+def load_claims_data_postgresql_only(session):
+    """Load 100,000 sample claims for PostgreSQL without facilities/providers dependencies."""
+    print("Loading 100,000 sample claims into PostgreSQL (processing-focused)...")
+    
+    batch_id = f"BATCH_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    total_claims = 100000
+    
+    # Hardcoded facility IDs (referencing SQL Server facilities)
+    facility_ids = ['FAC001', 'FAC002', 'FAC003', 'FAC004', 'FAC005']
+    
+    # Hardcoded provider NPIs (referencing SQL Server providers)
+    provider_npis = [
+        ('1234567890', 'Dr. John Smith'),
+        ('2345678901', 'Dr. Sarah Johnson'), 
+        ('3456789012', 'Dr. Michael Brown'),
+        ('4567890123', 'Dr. Emily Davis'),
+        ('5678901234', 'Dr. David Wilson'),
+        ('6789012345', 'Dr. Lisa Miller'),
+        ('7890123456', 'Dr. Robert Taylor'),
+        ('8901234567', 'Dr. Jennifer White'),
+        ('9012345678', 'Dr. Christopher Lee'),
+        ('0123456789', 'Dr. Amanda Garcia')
+    ]
+    
+    # Create batch metadata first and get the ID
+    session.execute(text("""
+        INSERT INTO batch_metadata 
+        (batch_id, facility_id, source_system, file_name, total_claims, 
+         submitted_by, status, created_at)
+        VALUES (:batch_id, :facility_id, 'sample_data_generator', 'load_sample_data.py', 
+                :total_claims, 'system', 'processing'::processing_status, CURRENT_TIMESTAMP)
+    """), {
+        "batch_id": batch_id,
+        "facility_id": facility_ids[0],  # Use first facility for batch
+        "total_claims": total_claims
+    })
+    
+    # Get the batch metadata ID
+    batch_result = session.execute(text("SELECT id FROM batch_metadata WHERE batch_id = :batch_id"), 
+                                  {"batch_id": batch_id})
+    batch_metadata_id = batch_result.fetchone()[0]
+    
+    # Insurance types for claims
+    insurance_types = ['Medicare', 'Medicaid', 'Commercial', 'Blue Cross', 'Aetna', 'Cigna', 'UnitedHealth']
+    financial_classes = ['A', 'BC', 'MA', 'SP', 'WC', 'PI']
+    
+    batch_size = 1000
+    
+    for batch_start in range(0, total_claims, batch_size):
+        batch_end = min(batch_start + batch_size, total_claims)
+        
+        for i in range(batch_start, batch_end):
+            # Generate claim data
+            facility_id = random.choice(facility_ids)
+            claim_id = f"CLM{i+1:08d}"
+            patient_account = f"PAT{i+1:08d}"
+            mrn = f"MRN{fake.random_number(digits=8)}"
+            
+            # Patient demographics
+            first_name = fake.first_name()
+            last_name = fake.last_name()
+            middle_name = fake.first_name() if random.random() < 0.3 else None
+            
+            # Age distribution
+            age = random.randint(1, 95)
+            dob = fake.date_of_birth(minimum_age=age, maximum_age=age)
+            
+            # Service dates
+            service_from_date = fake.date_between(start_date='-2y', end_date='today')
+            service_to_date = service_from_date + timedelta(days=random.randint(0, 7))
+            admission_date = service_from_date
+            discharge_date = service_to_date
+            
+            # Financial information
+            financial_class = random.choice(financial_classes)
+            insurance_type = random.choice(insurance_types)
+            subscriber_id = f"SUB{fake.random_number(digits=9)}"
+            insurance_plan_id = f"PLAN{fake.random_number(digits=6)}"
+            
+            # Provider information - use hardcoded references
+            billing_provider_npi, billing_provider_name = random.choice(provider_npis)
+            attending_provider_npi, attending_provider_name = random.choice(provider_npis)
+            
+            # Diagnosis codes
+            num_diagnoses = random.randint(1, 4)
+            selected_diagnoses = random.sample(DIAGNOSIS_CODES, num_diagnoses)
+            diagnosis_codes = [dx[0] for dx in selected_diagnoses]
+            primary_diagnosis = diagnosis_codes[0]
+            
+            # Calculate total charges from line items first
+            total_charges = Decimal('0')
+            line_items = []
+            
+            # Generate line items (1-6 per claim)
+            num_line_items = random.randint(1, 6)
+            selected_cpts = random.sample(CPT_CODES, min(num_line_items, len(CPT_CODES)))
+            
+            for line_num, (cpt_code, cpt_desc, work_rvu, pe_rvu, mp_rvu, total_rvu) in enumerate(selected_cpts, 1):
+                units = random.randint(1, 3)
+                
+                # Calculate charges
+                conversion_factor = Decimal('36.04')
+                charge_amount = round(Decimal(str(total_rvu)) * conversion_factor * units * Decimal(str(random.uniform(0.8, 1.2))), 2)
+                total_charges += charge_amount
+                
+                # Expected reimbursement (percentage of charges)
+                reimbursement_rate = random.uniform(0.6, 0.95)
+                expected_reimbursement = round(charge_amount * Decimal(str(reimbursement_rate)), 2)
+                
+                line_items.append({
+                    "line_number": line_num,
+                    "service_date": service_from_date,
+                    "procedure_code": cpt_code,
+                    "procedure_description": cpt_desc,
+                    "units": units,
+                    "charge_amount": charge_amount,
+                    "rendering_provider_npi": billing_provider_npi,
+                    "rendering_provider_name": billing_provider_name,
+                    "rvu_work": Decimal(str(work_rvu)),
+                    "rvu_practice_expense": Decimal(str(pe_rvu)),
+                    "rvu_malpractice": Decimal(str(mp_rvu)),
+                    "rvu_total": Decimal(str(total_rvu)),
+                    "expected_reimbursement": expected_reimbursement,
+                    "diagnosis_pointers": [1, 2] if len(diagnosis_codes) > 1 else [1]
+                })
+            
+            # Expected reimbursement for claim (sum of line items)
+            expected_reimbursement = sum(item["expected_reimbursement"] for item in line_items)
+            
+            # Insert claim into PostgreSQL claims table
+            claim_insert_result = session.execute(text("""
+                INSERT INTO claims (
+                    claim_id, facility_id, patient_account_number, medical_record_number,
+                    patient_first_name, patient_last_name, patient_middle_name, patient_date_of_birth,
+                    admission_date, discharge_date, service_from_date, service_to_date,
+                    financial_class, total_charges, expected_reimbursement,
+                    insurance_type, insurance_plan_id, subscriber_id,
+                    billing_provider_npi, billing_provider_name, 
+                    attending_provider_npi, attending_provider_name,
+                    primary_diagnosis_code, diagnosis_codes,
+                    processing_status, priority, correlation_id, batch_id,
+                    created_at, updated_at
+                )
+                VALUES (
+                    :claim_id, :facility_id, :patient_account_number, :medical_record_number,
+                    :patient_first_name, :patient_last_name, :patient_middle_name, :patient_date_of_birth,
+                    :admission_date, :discharge_date, :service_from_date, :service_to_date,
+                    :financial_class, :total_charges, :expected_reimbursement,
+                    :insurance_type, :insurance_plan_id, :subscriber_id,
+                    :billing_provider_npi, :billing_provider_name,
+                    :attending_provider_npi, :attending_provider_name,
+                    :primary_diagnosis_code, :diagnosis_codes,
+                    'pending'::processing_status, 'medium'::claim_priority, :correlation_id, :batch_id,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                RETURNING id
+            """), {
+                "claim_id": claim_id,
+                "facility_id": facility_id,
+                "patient_account_number": patient_account,
+                "medical_record_number": mrn,
+                "patient_first_name": first_name,
+                "patient_last_name": last_name,
+                "patient_middle_name": middle_name,
+                "patient_date_of_birth": dob,
+                "admission_date": admission_date,
+                "discharge_date": discharge_date,
+                "service_from_date": service_from_date,
+                "service_to_date": service_to_date,
+                "financial_class": financial_class,
+                "total_charges": total_charges,
+                "expected_reimbursement": expected_reimbursement,
+                "insurance_type": insurance_type,
+                "insurance_plan_id": insurance_plan_id,
+                "subscriber_id": subscriber_id,
+                "billing_provider_npi": billing_provider_npi,
+                "billing_provider_name": billing_provider_name,
+                "attending_provider_npi": attending_provider_npi,
+                "attending_provider_name": attending_provider_name,
+                "primary_diagnosis_code": primary_diagnosis,
+                "diagnosis_codes": diagnosis_codes,
+                "correlation_id": f"CORR_{i+1:08d}",
+                "batch_id": batch_metadata_id
+            })
+            
+            # Get the inserted claim ID
+            inserted_claim_id = claim_insert_result.fetchone()[0]
+            
+            # Insert line items for this claim
+            for line_item in line_items:
+                session.execute(text("""
+                    INSERT INTO claim_line_items (
+                        claim_id, line_number, service_date, procedure_code, procedure_description,
+                        units, charge_amount, rendering_provider_npi, rendering_provider_name,
+                        rvu_work, rvu_practice_expense, rvu_malpractice, rvu_total,
+                        expected_reimbursement, diagnosis_pointers,
+                        created_at, updated_at
+                    )
+                    VALUES (
+                        :claim_id, :line_number, :service_date, :procedure_code, :procedure_description,
+                        :units, :charge_amount, :rendering_provider_npi, :rendering_provider_name,
+                        :rvu_work, :rvu_practice_expense, :rvu_malpractice, :rvu_total,
+                        :expected_reimbursement, :diagnosis_pointers,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                """), {
+                    "claim_id": inserted_claim_id,
+                    "line_number": line_item["line_number"],
+                    "service_date": line_item["service_date"],
+                    "procedure_code": line_item["procedure_code"],
+                    "procedure_description": line_item["procedure_description"],
+                    "units": line_item["units"],
+                    "charge_amount": line_item["charge_amount"],
+                    "rendering_provider_npi": line_item["rendering_provider_npi"],
+                    "rendering_provider_name": line_item["rendering_provider_name"],
+                    "rvu_work": line_item["rvu_work"],
+                    "rvu_practice_expense": line_item["rvu_practice_expense"],
+                    "rvu_malpractice": line_item["rvu_malpractice"],
+                    "rvu_total": line_item["rvu_total"],
+                    "expected_reimbursement": line_item["expected_reimbursement"],
+                    "diagnosis_pointers": line_item["diagnosis_pointers"]
+                })
+        
+        # Commit batch
+        if (batch_end - batch_start) % 100 == 0:  # Commit every 100 claims
+            session.commit()
+        
+        # Progress indicator
+        progress = ((batch_end) / total_claims) * 100
+        print(f"  Progress: {progress:.1f}% ({batch_end:,}/{total_claims:,} claims)")
+    
+    # Final commit
+    session.commit()
+    
+    # Update batch metadata to completed
+    session.execute(text("""
+        UPDATE batch_metadata 
+        SET status = 'completed'::processing_status,
+            processed_claims = :total_claims,
+            completed_at = CURRENT_TIMESTAMP,
+            processing_time_seconds = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - submitted_at))
+        WHERE batch_id = :batch_id
+    """), {
+        "total_claims": total_claims,
+        "batch_id": batch_id
+    })
+    
+    session.commit()
+    print(">> Claims data loaded successfully into PostgreSQL public.claims (processing-focused)")
+    print(f">> Using facility references: {', '.join(facility_ids)} (from SQL Server)")
+    print(f">> Using provider references: {len(provider_npis)} providers (from SQL Server)")
+
+def load_claims_data_sqlserver(session, facility_ids: List[str], provider_ids: List[str]):
+    """Load 100,000 sample claims for SQL Server with line items and diagnoses."""
+    print("Loading 100,000 sample claims (SQL Server)...")
     
     # Get financial classes for each facility
-    fc_result = session.execute(text("""
-        SELECT facility_id, financial_class_id 
-        FROM dbo.facility_financial_classes 
-        WHERE active = 1
-    """))
-    facility_financial_classes = {}
-    for row in fc_result.fetchall():
-        if row[0] not in facility_financial_classes:
-            facility_financial_classes[row[0]] = []
-        facility_financial_classes[row[0]].append(row[1])
+    try:
+        fc_result = session.execute(text("""
+            SELECT facility_id, financial_class_id 
+            FROM dbo.facility_financial_classes 
+            WHERE active = 1
+        """))
+        facility_financial_classes = {}
+        for row in fc_result.fetchall():
+            if row[0] not in facility_financial_classes:
+                facility_financial_classes[row[0]] = []
+            facility_financial_classes[row[0]].append(row[1])
+        
+        # If no financial classes found, create defaults
+        if not facility_financial_classes:
+            print("No financial classes found. Creating default ones...")
+            for facility_id in facility_ids:
+                facility_financial_classes[facility_id] = ['A', 'BC', 'MA', 'SP']
+    except Exception as e:
+        print(f"Warning: Could not load financial classes: {e}")
+        # Use default financial classes
+        for facility_id in facility_ids:
+            facility_financial_classes[facility_id] = ['A', 'BC', 'MA', 'SP']
     
     batch_size = 1000
     total_claims = 100000
@@ -564,24 +1242,9 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
             
             # Patient demographics
             gender = random.choice(['M', 'F'])
-            if gender == 'M':
-                first_name = fake.first_name_male()
-            else:
-                first_name = fake.first_name_female()
+            first_name = fake.first_name()
             last_name = fake.last_name()
-            
-            # Age distribution weighted toward working age adults
-            age_weights = [0.1, 0.3, 0.4, 0.2]  # 0-17, 18-44, 45-64, 65+
-            age_group = random.choices([0, 1, 2, 3], weights=age_weights)[0]
-            if age_group == 0:
-                age = random.randint(1, 17)
-            elif age_group == 1:
-                age = random.randint(18, 44)
-            elif age_group == 2:
-                age = random.randint(45, 64)
-            else:
-                age = random.randint(65, 95)
-            
+            age = random.randint(1, 95)
             dob = fake.date_of_birth(minimum_age=age, maximum_age=age)
             
             # Financial class
@@ -602,8 +1265,8 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
                 "created_at": created_at
             })
             
-            # Generate diagnoses (1-5 per claim)
-            num_diagnoses = random.choices([1, 2, 3, 4, 5], weights=[0.4, 0.3, 0.2, 0.07, 0.03])[0]
+            # Generate diagnoses (1-4 per claim)
+            num_diagnoses = random.randint(1, 4)
             selected_diagnoses = random.sample(DIAGNOSIS_CODES, num_diagnoses)
             
             for seq, (dx_code, dx_desc) in enumerate(selected_diagnoses, 1):
@@ -618,36 +1281,20 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
                     "created_at": created_at
                 })
             
-            # Generate line items (1-8 per claim)
-            num_line_items = random.choices([1, 2, 3, 4, 5, 6, 7, 8], 
-                                          weights=[0.3, 0.25, 0.2, 0.1, 0.08, 0.04, 0.02, 0.01])[0]
+            # Generate line items (1-6 per claim)
+            num_line_items = random.randint(1, 6)
             selected_cpts = random.sample(CPT_CODES, min(num_line_items, len(CPT_CODES)))
             
             for line_num, (cpt_code, cpt_desc, work_rvu, pe_rvu, mp_rvu, total_rvu) in enumerate(selected_cpts, 1):
-                units = random.choices([1, 2, 3, 4], weights=[0.8, 0.15, 0.04, 0.01])[0]
+                units = random.randint(1, 3)
                 
-                # Calculate charges based on RVU and conversion factor
+                # Calculate charges
                 conversion_factor = Decimal('34.61')
-                rvu_amount = Decimal(str(total_rvu)) * conversion_factor * units
+                charge_amount = round(Decimal(str(total_rvu)) * conversion_factor * units * Decimal(str(random.uniform(0.8, 1.2))), 2)
                 
-                # Add random variation to charges (±20%)
-                variation = Decimal(str(random.uniform(0.8, 1.2)))
-                charge_amount = round(rvu_amount * variation, 2)
-                
-                # Reimbursement based on financial class rate
-                fc_rates = {
-                    'A': 0.85, 'B': 0.80, 'MA': 0.65, 'BC': 0.90, 'HM': 0.85,
-                    'CO': 0.87, 'SP': 0.20, 'WC': 0.95, 'TR': 0.82, 'OT': 0.75
-                }
-                reimbursement_rate = fc_rates.get(financial_class, 0.80)
-                reimbursement_amount = round(charge_amount * Decimal(str(reimbursement_rate)), 2)
-                
-                # Service dates (usually same day, sometimes span)
+                # Service dates
                 service_from = created_at.date()
-                if random.random() < 0.1:  # 10% chance of multi-day service
-                    service_to = service_from + timedelta(days=random.randint(1, 7))
-                else:
-                    service_to = service_from
+                service_to = service_from
                 
                 # Place of service
                 place_of_service = random.choice(['11', '22', '23', '21', '24'])
@@ -656,7 +1303,7 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
                 diagnosis_pointer = ','.join([str(j) for j in range(1, min(num_diagnoses + 1, 5))])
                 
                 # Provider
-                rendering_provider = random.choice(physician_ids)
+                rendering_provider = random.choice(provider_ids)
                 
                 batch_line_items.append({
                     "facility_id": facility_id,
@@ -670,71 +1317,47 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
                     "diagnosis_pointer": diagnosis_pointer,
                     "place_of_service": place_of_service,
                     "rvu_value": Decimal(str(total_rvu)),
-                    "reimbursement_amount": reimbursement_amount,
                     "rendering_provider_id": rendering_provider,
                     "created_at": created_at
                 })
         
-        # Insert batch data
+        # Insert batch data using SQL Server syntax
         # Claims
         if batch_claims:
-            claims_values = []
             for claim in batch_claims:
-                claims_values.append(f"('{claim['facility_id']}', '{claim['patient_account_number']}', "
-                                   f"'{claim['medical_record_number']}', '{claim['first_name']}', "
-                                   f"'{claim['last_name']}', '{claim['date_of_birth']}', '{claim['gender']}', "
-                                   f"'{claim['financial_class_id']}', '{claim['created_at']}')")
-            
-            claims_sql = f"""
-                INSERT INTO dbo.claims 
-                (facility_id, patient_account_number, medical_record_number, first_name, 
-                 last_name, date_of_birth, gender, financial_class_id, created_at)
-                VALUES {', '.join(claims_values)}
-            """
-            session.execute(text(claims_sql))
+                session.execute(text("""
+                    INSERT INTO dbo.claims 
+                    (facility_id, patient_account_number, medical_record_number, first_name, 
+                     last_name, date_of_birth, gender, financial_class_id, created_at)
+                    VALUES (:facility_id, :patient_account_number, :medical_record_number, 
+                            :first_name, :last_name, :date_of_birth, :gender, 
+                            :financial_class_id, :created_at)
+                """), claim)
         
-        # Diagnoses - split into chunks to avoid SQL Server 1000 row limit
+        # Diagnoses
         if batch_diagnoses:
-            chunk_size = 500  # Well below SQL Server's 1000 row limit
-            for i in range(0, len(batch_diagnoses), chunk_size):
-                chunk = batch_diagnoses[i:i + chunk_size]
-                dx_values = []
-                for dx in chunk:
-                    dx_values.append(f"('{dx['facility_id']}', '{dx['patient_account_number']}', "
-                                   f"{dx['diagnosis_sequence']}, '{dx['diagnosis_code']}', "
-                                   f"'{dx['diagnosis_description']}', '{dx['diagnosis_type']}', "
-                                   f"'{dx['created_at']}')")
-                
-                dx_sql = f"""
+            for dx in batch_diagnoses:
+                session.execute(text("""
                     INSERT INTO dbo.claims_diagnosis 
                     (facility_id, patient_account_number, diagnosis_sequence, diagnosis_code,
                      diagnosis_description, diagnosis_type, created_at)
-                    VALUES {', '.join(dx_values)}
-                """
-                session.execute(text(dx_sql))
+                    VALUES (:facility_id, :patient_account_number, :diagnosis_sequence, 
+                            :diagnosis_code, :diagnosis_description, :diagnosis_type, :created_at)
+                """), dx)
         
-        # Line items - split into chunks to avoid SQL Server 1000 row limit
+        # Line items
         if batch_line_items:
-            chunk_size = 500  # Well below SQL Server's 1000 row limit
-            for i in range(0, len(batch_line_items), chunk_size):
-                chunk = batch_line_items[i:i + chunk_size]
-                li_values = []
-                for li in chunk:
-                    li_values.append(f"('{li['facility_id']}', '{li['patient_account_number']}', "
-                                   f"{li['line_number']}, '{li['procedure_code']}', {li['units']}, "
-                                   f"{li['charge_amount']}, '{li['service_from_date']}', '{li['service_to_date']}', "
-                                   f"'{li['diagnosis_pointer']}', '{li['place_of_service']}', "
-                                   f"{li['rvu_value']}, {li['reimbursement_amount']}, "
-                                   f"'{li['rendering_provider_id']}', '{li['created_at']}')")
-                
-                li_sql = f"""
+            for li in batch_line_items:
+                session.execute(text("""
                     INSERT INTO dbo.claims_line_items 
                     (facility_id, patient_account_number, line_number, procedure_code, units,
                      charge_amount, service_from_date, service_to_date, diagnosis_pointer,
-                     place_of_service, rvu_value, reimbursement_amount, rendering_provider_id, created_at)
-                    VALUES {', '.join(li_values)}
-                """
-                session.execute(text(li_sql))
+                     place_of_service, rvu_value, rendering_provider_id, created_at)
+                    VALUES (:facility_id, :patient_account_number, :line_number, :procedure_code, 
+                            :units, :charge_amount, :service_from_date, :service_to_date, 
+                            :diagnosis_pointer, :place_of_service, :rvu_value, 
+                            :rendering_provider_id, :created_at)
+                """), li)
         
         session.commit()
         
@@ -746,11 +1369,11 @@ def load_claims_data(session, facility_ids: List[str], physician_ids: List[str])
 
 def main():
     """Main function to load all sample data."""
-    parser = argparse.ArgumentParser(description='Load sample data for Smart Pro Claims database')
+    parser = argparse.ArgumentParser(description='Load sample data for claims database (PostgreSQL or SQL Server)')
     parser.add_argument(
         '--connection-string',
         required=True,
-        help='SQL Server connection string'
+        help='Database connection string (PostgreSQL: postgresql://user:pass@host:port/database or SQL Server: mssql+pyodbc://...)'
     )
     parser.add_argument(
         '--skip-claims',
@@ -760,7 +1383,7 @@ def main():
     
     args = parser.parse_args()
     
-    print("Starting Smart Pro Claims sample data loading...")
+    print("Starting Claims Database sample data loading...")
     print(f"Connection: {args.connection_string.split('@')[1] if '@' in args.connection_string else 'Local'}")
     
     try:
@@ -769,29 +1392,55 @@ def main():
         Session = sessionmaker(bind=engine)
         session = Session()
         
+        # Detect database type
+        db_type = get_database_type(args.connection_string)
+        print(f"Detected database type: {db_type}")
+        
+        if db_type == 'postgresql':
+            print(">>> CLAIMS WILL BE LOADED INTO POSTGRESQL public.claims TABLE")
+        else:
+            print(">>> CLAIMS WILL BE LOADED INTO SQL SERVER dbo.claims TABLE")
+        
         # Load data in order
         start_time = datetime.now()
         
-        # 1. Load organizational hierarchy
-        facility_ids = load_organizational_hierarchy(session)
-        
-        # 2. Load facility configuration
-        load_facility_financial_classes(session, facility_ids)
-        load_facility_place_of_service(session, facility_ids)
-        load_facility_departments(session, facility_ids)
-        load_facility_coders(session, facility_ids)
-        
-        # 3. Load physicians
-        physician_ids = load_physicians(session)
-        
-        # 4. Load RVU data
-        load_rvu_data(session)
-        
-        # 5. Load claims data (if not skipped)
-        if not args.skip_claims:
-            load_claims_data(session, facility_ids, physician_ids)
+        if db_type == 'postgresql':
+            # PostgreSQL: Load only processing-specific data (no facilities/providers)
+            print("Setting up PostgreSQL for claims processing...")
+            
+            # 1. Load RVU data (processing reference)
+            load_rvu_data(session, db_type)
+            
+            # 2. Load validation rules
+            load_validation_rules(session, db_type)
+            
+            # 3. Load sample claims (using hardcoded facility/provider references)
+            if not args.skip_claims:
+                load_claims_data_postgresql_only(session)
+            else:
+                print(">> Skipping claims data loading")
+                
         else:
-            print(">> Skipping claims data loading")
+            # SQL Server: Load full dataset including facilities and providers
+            print("Setting up SQL Server with full dataset...")
+            
+            # 1. Load facilities
+            facility_ids = load_facilities(session, db_type)
+            
+            # 2. Load providers
+            provider_ids = load_providers(session, db_type)
+            
+            # 3. Load RVU data
+            load_rvu_data(session, db_type)
+            
+            # 4. Load facility configuration
+            load_facility_configuration_sqlserver(session, facility_ids)
+            
+            # 5. Load claims data
+            if not args.skip_claims:
+                load_claims_data_sqlserver(session, facility_ids, provider_ids)
+            else:
+                print(">> Skipping claims data loading")
         
         # Final commit and summary
         session.commit()
@@ -803,18 +1452,34 @@ def main():
         print(f"\n>> Sample data loading completed successfully!")
         print(f"Total time: {duration}")
         print(f"\nData Summary:")
-        print(f"   - 2 Organizations")
-        print(f"   - 2 Regions")
-        print(f"   - 5 Facilities")
-        print(f"   - 200 Physicians")
-        print(f"   - {len(CPT_CODES)} CPT/RVU codes")
-        print(f"   - {len(DIAGNOSIS_CODES)} Diagnosis codes")
-        if not args.skip_claims:
-            print(f"   - 100,000 Claims with line items and diagnoses")
-        print(f"\n>> Ready for testing and analytics!")
+        if db_type == 'postgresql':
+            print(f"   - {len(CPT_CODES)} CPT/RVU codes (processing reference)")
+            print(f"   - 8 Validation rules")
+            print(f"   - Facilities/Providers: Referenced from SQL Server")
+            if not args.skip_claims:
+                print(f"   - 100,000 Claims with line items (processing-focused)")
+        else:
+            print(f"   - 2 Organizations")
+            print(f"   - 2 Regions")
+            print(f"   - 5 Facilities with configuration")
+            print(f"   - 200 Providers")
+            print(f"   - {len(CPT_CODES)} CPT/RVU codes")
+            print(f"   - Financial classes, departments, and coders")
+            if not args.skip_claims:
+                print(f"   - 100,000 Claims with line items and diagnoses")
+        
+        if db_type == 'postgresql':
+            print(f"\n>> PostgreSQL claims processing database ready!")
+            print(f">> Claims loaded for processing workflow")
+            print(f">> Reference data (facilities/providers) remains in SQL Server")
+        else:
+            print(f"\n>> SQL Server analytics database ready!")
+            print(f">> Full dataset loaded for reporting and analytics")
         
     except Exception as e:
         print(f"Error loading sample data: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
