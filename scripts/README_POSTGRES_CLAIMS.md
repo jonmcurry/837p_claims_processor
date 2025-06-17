@@ -8,6 +8,27 @@ The script automatically detects the database type from the connection string:
 
 ## Solutions to Load Claims into PostgreSQL:
 
+## Option 0: Using the Updated setup_database.py (EASIEST)
+
+The setup script now prioritizes PostgreSQL when both databases are configured:
+
+```bash
+# Quick interactive setup for PostgreSQL claims processing
+python3 scripts/setup_postgres_for_claims.py
+
+# OR setup PostgreSQL directly
+python3 scripts/setup_database.py \
+    --postgres-host localhost \
+    --postgres-user claims_user \
+    --postgres-password your_password \
+    --postgres-database claims_staging
+```
+
+This will:
+1. Create the PostgreSQL database
+2. Load the claims processing schema  
+3. **Automatically load claims into PostgreSQL public.claims table**
+
 ## Option 1: Using the Updated PowerShell Script
 
 ```powershell

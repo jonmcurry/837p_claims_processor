@@ -332,7 +332,7 @@ class DatabaseSetup:
             
         console.print("\n[cyan]Setting up PostgreSQL database...[/cyan]")
         
-        db_name = self.config.get('postgres_database', 'smart_pro_claims')
+        db_name = self.config.get('postgres_database', 'claims_staging')
         
         # Check if database exists
         if self.postgres_database_exists(db_name):
@@ -380,13 +380,20 @@ class DatabaseSetup:
             return False
         
         # Build connection string for sample data loader
-        if self.config.get('setup_sqlserver'):
+        # PRIORITY: Use PostgreSQL for claims processing workflow when available
+        if self.config.get('setup_postgres'):
+            # PostgreSQL database name should be 'claims_staging' for the processing workflow
+            postgres_db = self.config.get('postgres_database', 'claims_staging')
+            conn_str = f"postgresql://{self.config['postgres_user']}:{self.config['postgres_password']}@{self.config['postgres_host']}:{self.config['postgres_port']}/{postgres_db}"
+            console.print(f"[green]>>> LOADING CLAIMS INTO POSTGRESQL: {postgres_db}[/green]")
+            console.print("[blue]Claims will be loaded into public.claims table for processing workflow[/blue]")
+        elif self.config.get('setup_sqlserver'):
             if self.config.get('sqlserver_integrated_auth'):
                 conn_str = f"mssql+pyodbc://{self.config['sqlserver_host']}/{self.config.get('sqlserver_database', 'smart_pro_claims')}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
             else:
                 conn_str = f"mssql+pyodbc://{self.config['sqlserver_user']}:{self.config['sqlserver_password']}@{self.config['sqlserver_host']}/{self.config.get('sqlserver_database', 'smart_pro_claims')}?driver=ODBC+Driver+17+for+SQL+Server"
-        elif self.config.get('setup_postgres'):
-            conn_str = f"postgresql://{self.config['postgres_user']}:{self.config['postgres_password']}@{self.config['postgres_host']}:{self.config['postgres_port']}/{self.config.get('postgres_database', 'smart_pro_claims')}"
+            console.print(f"[yellow]>>> LOADING CLAIMS INTO SQL SERVER: {self.config.get('sqlserver_database', 'smart_pro_claims')}[/yellow]")
+            console.print("[dim]Note: For claims processing workflow, use PostgreSQL instead[/dim]")
         else:
             console.print("[red]No database configured for sample data loading[/red]")
             return False
@@ -480,17 +487,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Setup PostgreSQL only
-  python scripts/setup_database.py --postgres-host localhost --postgres-user postgres --postgres-password mypassword
+  # Setup PostgreSQL for claims processing (RECOMMENDED)
+  python scripts/setup_database.py --postgres-host localhost --postgres-user claims_user --postgres-password mypassword
   
-  # Setup SQL Server with integrated auth
+  # Setup PostgreSQL with custom database name
+  python scripts/setup_database.py --postgres-host localhost --postgres-user claims_user --postgres-password mypass --postgres-database my_claims_staging
+  
+  # Setup SQL Server only (for analytics/reporting)
   python scripts/setup_database.py --sqlserver-host localhost --integrated-auth
   
-  # Setup both databases
-  python scripts/setup_database.py --postgres-host localhost --postgres-user postgres --postgres-password pg_pass --sqlserver-host localhost --sqlserver-user sa --sqlserver-password sql_pass
-  
-  # Setup with custom database names
-  python scripts/setup_database.py --postgres-host localhost --postgres-user postgres --postgres-password mypass --postgres-database my_claims_db
+  # Setup both databases (PostgreSQL for processing, SQL Server for analytics)
+  python scripts/setup_database.py --postgres-host localhost --postgres-user claims_user --postgres-password pg_pass --sqlserver-host localhost --sqlserver-user sa --sqlserver-password sql_pass
         """
     )
     
@@ -499,7 +506,7 @@ Examples:
     parser.add_argument('--postgres-port', type=int, default=5432, help='PostgreSQL port (default: 5432)')
     parser.add_argument('--postgres-user', help='PostgreSQL username')
     parser.add_argument('--postgres-password', help='PostgreSQL password')
-    parser.add_argument('--postgres-database', default='smart_pro_claims', help='PostgreSQL database name (default: smart_pro_claims)')
+    parser.add_argument('--postgres-database', default='claims_staging', help='PostgreSQL database name (default: claims_staging)')
     
     # SQL Server options
     parser.add_argument('--sqlserver-host', help='SQL Server host')
