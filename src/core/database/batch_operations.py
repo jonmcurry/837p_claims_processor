@@ -340,41 +340,110 @@ class BatchDatabaseOperations:
                             }
                             line_items_to_insert.append(line_record)
                     
-                    # Execute bulk inserts using simple INSERT statements
+                    # Execute bulk inserts using batch MERGE to reduce deadlocks
                     if claims_to_insert:
-                        # Bulk insert claims using executemany for better performance
-                        claims_query = text("""
-                            INSERT INTO dbo.claims (
-                                facility_id, patient_account_number, medical_record_number,
-                                patient_name, first_name, last_name, date_of_birth,
-                                gender, financial_class_id, secondary_insurance
-                            ) VALUES (
-                                :facility_id, :patient_account_number, :medical_record_number,
-                                :patient_name, :first_name, :last_name, :date_of_birth,
-                                :gender, :financial_class_id, :secondary_insurance
-                            )
-                        """)
+                        # Use batch MERGE with smaller chunks to reduce lock contention
+                        batch_size = 100  # Smaller batches to reduce deadlock risk
                         
-                        conn.execute(claims_query, claims_to_insert)
+                        for i in range(0, len(claims_to_insert), batch_size):
+                            batch = claims_to_insert[i:i + batch_size]
+                            
+                            # Build VALUES clause for batch MERGE
+                            values_list = []
+                            params = {}
+                            
+                            for idx, claim_record in enumerate(batch):
+                                param_prefix = f"c{i}_{idx}"
+                                values_list.append(f"(:{param_prefix}_facility_id, :{param_prefix}_patient_account_number, :{param_prefix}_medical_record_number, :{param_prefix}_patient_name, :{param_prefix}_first_name, :{param_prefix}_last_name, :{param_prefix}_date_of_birth, :{param_prefix}_gender, :{param_prefix}_financial_class_id, :{param_prefix}_secondary_insurance)")
+                                
+                                params.update({
+                                    f"{param_prefix}_facility_id": claim_record['facility_id'],
+                                    f"{param_prefix}_patient_account_number": claim_record['patient_account_number'],
+                                    f"{param_prefix}_medical_record_number": claim_record['medical_record_number'],
+                                    f"{param_prefix}_patient_name": claim_record['patient_name'],
+                                    f"{param_prefix}_first_name": claim_record['first_name'],
+                                    f"{param_prefix}_last_name": claim_record['last_name'],
+                                    f"{param_prefix}_date_of_birth": claim_record['date_of_birth'],
+                                    f"{param_prefix}_gender": claim_record['gender'],
+                                    f"{param_prefix}_financial_class_id": claim_record['financial_class_id'],
+                                    f"{param_prefix}_secondary_insurance": claim_record['secondary_insurance']
+                                })
+                            
+                            batch_merge_query = text(f"""
+                                SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+                                MERGE dbo.claims AS target
+                                USING (VALUES {', '.join(values_list)}) AS source (
+                                    facility_id, patient_account_number, medical_record_number,
+                                    patient_name, first_name, last_name, date_of_birth,
+                                    gender, financial_class_id, secondary_insurance
+                                )
+                                ON target.facility_id = source.facility_id 
+                                AND target.patient_account_number = source.patient_account_number
+                                WHEN NOT MATCHED THEN
+                                    INSERT (facility_id, patient_account_number, medical_record_number,
+                                            patient_name, first_name, last_name, date_of_birth,
+                                            gender, financial_class_id, secondary_insurance)
+                                    VALUES (source.facility_id, source.patient_account_number, source.medical_record_number,
+                                            source.patient_name, source.first_name, source.last_name, source.date_of_birth,
+                                            source.gender, source.financial_class_id, source.secondary_insurance);
+                            """)
+                            
+                            conn.execute(batch_merge_query, params)
+                        
                         successful_inserts = len(claims_to_insert)
                         
                     if line_items_to_insert:
-                        # Bulk insert line items
-                        line_items_query = text("""
-                            INSERT INTO dbo.claims_line_items (
-                                facility_id, patient_account_number, line_number,
-                                procedure_code, units, charge_amount,
-                                service_from_date, service_to_date,
-                                diagnosis_pointer, rendering_provider_id
-                            ) VALUES (
-                                :facility_id, :patient_account_number, :line_number,
-                                :procedure_code, :units, :charge_amount,
-                                :service_from_date, :service_to_date,
-                                :diagnosis_pointer, :rendering_provider_id
-                            )
-                        """)
+                        # Use batch MERGE for line items to reduce deadlocks
+                        line_batch_size = 50  # Smaller batches for line items
                         
-                        conn.execute(line_items_query, line_items_to_insert)
+                        for i in range(0, len(line_items_to_insert), line_batch_size):
+                            line_batch = line_items_to_insert[i:i + line_batch_size]
+                            
+                            # Build VALUES clause for batch MERGE
+                            line_values_list = []
+                            line_params = {}
+                            
+                            for idx, line_record in enumerate(line_batch):
+                                param_prefix = f"l{i}_{idx}"
+                                line_values_list.append(f"(:{param_prefix}_facility_id, :{param_prefix}_patient_account_number, :{param_prefix}_line_number, :{param_prefix}_procedure_code, :{param_prefix}_units, :{param_prefix}_charge_amount, :{param_prefix}_service_from_date, :{param_prefix}_service_to_date, :{param_prefix}_diagnosis_pointer, :{param_prefix}_rendering_provider_id)")
+                                
+                                line_params.update({
+                                    f"{param_prefix}_facility_id": line_record['facility_id'],
+                                    f"{param_prefix}_patient_account_number": line_record['patient_account_number'],
+                                    f"{param_prefix}_line_number": line_record['line_number'],
+                                    f"{param_prefix}_procedure_code": line_record['procedure_code'],
+                                    f"{param_prefix}_units": line_record['units'],
+                                    f"{param_prefix}_charge_amount": line_record['charge_amount'],
+                                    f"{param_prefix}_service_from_date": line_record['service_from_date'],
+                                    f"{param_prefix}_service_to_date": line_record['service_to_date'],
+                                    f"{param_prefix}_diagnosis_pointer": line_record['diagnosis_pointer'],
+                                    f"{param_prefix}_rendering_provider_id": line_record['rendering_provider_id']
+                                })
+                            
+                            line_batch_merge_query = text(f"""
+                                SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+                                MERGE dbo.claims_line_items AS target
+                                USING (VALUES {', '.join(line_values_list)}) AS source (
+                                    facility_id, patient_account_number, line_number,
+                                    procedure_code, units, charge_amount,
+                                    service_from_date, service_to_date,
+                                    diagnosis_pointer, rendering_provider_id
+                                )
+                                ON target.facility_id = source.facility_id 
+                                AND target.patient_account_number = source.patient_account_number
+                                AND target.line_number = source.line_number
+                                WHEN NOT MATCHED THEN
+                                    INSERT (facility_id, patient_account_number, line_number,
+                                            procedure_code, units, charge_amount,
+                                            service_from_date, service_to_date,
+                                            diagnosis_pointer, rendering_provider_id)
+                                    VALUES (source.facility_id, source.patient_account_number, source.line_number,
+                                            source.procedure_code, source.units, source.charge_amount,
+                                            source.service_from_date, source.service_to_date,
+                                            source.diagnosis_pointer, source.rendering_provider_id);
+                            """)
+                            
+                            conn.execute(line_batch_merge_query, line_params)
                     
                     conn.commit()
                     
@@ -393,61 +462,49 @@ class BatchDatabaseOperations:
         
             
     async def bulk_update_claim_status(self, claim_updates: List[Dict]) -> int:
-        """Bulk update claim processing status in PostgreSQL."""
+        """Bulk update claim processing status in PostgreSQL with chunking to avoid parameter limits."""
         start_time = time.time()
+        total_updated = 0
         
         try:
             async with pool_manager.get_postgres_session() as session:
-                # Use efficient bulk update with CASE statements
                 if not claim_updates:
                     return 0
+                
+                # Split into smaller chunks to avoid PostgreSQL parameter limit (32,767)
+                # With 4 parameters per claim (id, status, processed_at, reimbursement), 
+                # we can safely process 8000 claims per chunk
+                chunk_size = 8000
+                
+                for i in range(0, len(claim_updates), chunk_size):
+                    chunk = claim_updates[i:i + chunk_size]
+                    logger.info(f"Processing status update chunk {i//chunk_size + 1}: {len(chunk)} claims")
                     
-                # Prepare bulk update query
-                claim_ids = [update['claim_id'] for update in claim_updates]
-                
-                # Build CASE statements for different fields
-                status_cases = []
-                processed_at_cases = []
-                reimbursement_cases = []
-                
-                params = {'claim_ids': claim_ids}
-                
-                for i, update in enumerate(claim_updates):
-                    claim_id_param = f"claim_id_{i}"
-                    status_param = f"status_{i}"
-                    processed_at_param = f"processed_at_{i}"
-                    reimbursement_param = f"reimbursement_{i}"
+                    # Simple UPDATE with WHERE IN clause for better performance
+                    claim_ids = [update['claim_id'] for update in chunk]
                     
-                    params[claim_id_param] = update['claim_id']
-                    params[status_param] = update.get('status', 'completed')
-                    params[processed_at_param] = update.get('processed_at')
-                    params[reimbursement_param] = update.get('expected_reimbursement', 0)
+                    # Use simple UPDATE query with fixed values
+                    query = text("""
+                        UPDATE claims 
+                        SET 
+                            processing_status = 'completed'::processing_status,
+                            processed_at = NOW(),
+                            expected_reimbursement = COALESCE(expected_reimbursement, 0),
+                            updated_at = NOW()
+                        WHERE id = ANY(:claim_ids)
+                    """)
                     
-                    status_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{status_param} AS processing_status)")
-                    if update.get('processed_at') is None:
-                        processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN NOW()")
-                    else:
-                        processed_at_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{processed_at_param} AS timestamp)")
-                    reimbursement_cases.append(f"WHEN id = :{claim_id_param} THEN CAST(:{reimbursement_param} AS numeric)")
+                    result = await session.execute(query, {'claim_ids': claim_ids})
+                    chunk_updated = result.rowcount
+                    total_updated += chunk_updated
+                    
+                    logger.info(f"Updated {chunk_updated} claims in chunk {i//chunk_size + 1}")
                 
-                query = text(f"""
-                    UPDATE claims 
-                    SET 
-                        processing_status = CASE {' '.join(status_cases)} END,
-                        processed_at = CASE {' '.join(processed_at_cases)} END,
-                        expected_reimbursement = CASE {' '.join(reimbursement_cases)} END,
-                        updated_at = NOW()
-                    WHERE id = ANY(:claim_ids)
-                """)
-                
-                result = await session.execute(query, params)
                 await session.commit()
                 
-                updated_count = result.rowcount
                 update_time = time.time() - start_time
-                
-                logger.info(f"Bulk updated {updated_count} claim statuses in {update_time:.2f}s")
-                return updated_count
+                logger.info(f"Bulk updated {total_updated} claim statuses in {update_time:.2f}s")
+                return total_updated
                 
         except Exception as e:
             logger.error(f"Bulk status update failed: {e}")

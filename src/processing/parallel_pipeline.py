@@ -82,7 +82,7 @@ class ParallelClaimsProcessor:
         self.concurrency_limits = {
             'validation': 50,       # High concurrency for validation
             'rvu_calculation': 40,  # High concurrency for calculations
-            'transfer': 30,         # Moderate concurrency for database writes
+            'transfer': 5,          # Low concurrency for SQL Server to prevent deadlocks
         }
         
     async def process_claims_parallel(self, batch_id: str = None, limit: int = None) -> ParallelProcessingResult:
