@@ -25,6 +25,7 @@ class OptimizedPoolManager:
     def __init__(self):
         self.postgres_engine: Optional[AsyncEngine] = None
         self.sqlserver_engine: Optional[AsyncEngine] = None
+        self.sqlserver_sync_engine = None  # Synchronous SQL Server engine
         self.postgres_session_maker: Optional[async_sessionmaker] = None
         self.sqlserver_session_maker: Optional[async_sessionmaker] = None
         self._pool_stats = {
@@ -57,22 +58,27 @@ class OptimizedPoolManager:
             },
         )
         
-        # Create optimized SQL Server engine (if async driver available)
+        # Create optimized SQL Server engine (use synchronous for compatibility)
         try:
-            self.sqlserver_engine = create_async_engine(
-                settings.sqlserver_url,
+            from sqlalchemy import create_engine
+            self.sqlserver_sync_engine = create_engine(
+                settings.sqlserver_url,  # Already uses sync pymssql
                 echo=False,
                 poolclass=NullPool,
                 connect_args={
                     "timeout": 60,
                     "login_timeout": 30,
                     "autocommit": False,
-                    "ansi": True,
-                    "as_dict": True,
                 },
             )
+            # Test connection
+            with self.sqlserver_sync_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            self.sqlserver_engine = None  # Keep async engine as None
+            logger.info("SQL Server synchronous engine created successfully")
         except Exception as e:
-            logger.warning(f"SQL Server async engine creation failed: {e}. Using PostgreSQL only.")
+            logger.warning(f"SQL Server engine creation failed: {e}. Using PostgreSQL only.")
+            self.sqlserver_sync_engine = None
             self.sqlserver_engine = None
         
         # Create session makers

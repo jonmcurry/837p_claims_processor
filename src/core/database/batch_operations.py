@@ -28,14 +28,14 @@ class BatchDatabaseOperations:
     
     def __init__(self):
         self.batch_sizes = {
-            'claim_fetch': 5000,  # Larger fetch batches
+            'claim_fetch': 50000,  # Much larger fetch batches for 100k claims
             'claim_insert': 1000,  # Optimized insert batches
             'line_item_insert': 2000,  # Line items can be larger
             'status_update': 2000,  # Bulk status updates
             'rvu_lookup': 1000,  # RVU batch lookups
         }
         
-    async def fetch_claims_batch(self, batch_id: str = None, limit: int = None) -> List[Dict]:
+    async def fetch_claims_batch(self, batch_id: str = None, limit: int = None, include_all_statuses: bool = False) -> List[Dict]:
         """Fetch claims in optimized batches using single query with joins."""
         start_time = time.time()
         
@@ -87,7 +87,7 @@ class BatchDatabaseOperations:
                         FROM claims c
                         LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
                         WHERE c.processing_status = 'pending'
-                        ORDER BY c.priority DESC, c.created_at ASC
+                        ORDER BY c.priority DESC, c.created_at ASC, c.id ASC
                         LIMIT :limit_val
                     """)
                     params = {
@@ -138,7 +138,7 @@ class BatchDatabaseOperations:
                         LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
                         WHERE c.processing_status = 'pending'
                         AND c.batch_id = :batch_id
-                        ORDER BY c.priority DESC, c.created_at ASC
+                        ORDER BY c.priority DESC, c.created_at ASC, c.id ASC
                         LIMIT :limit_val
                     """)
                     params = {
@@ -249,126 +249,127 @@ class BatchDatabaseOperations:
         failed_inserts = 0
         
         try:
-            # Check if SQL Server session maker is available
-            if not pool_manager.sqlserver_session_maker:
-                logger.warning("SQL Server not available, skipping bulk insert")
+            # Check if SQL Server sync engine is available
+            has_attr = hasattr(pool_manager, 'sqlserver_sync_engine')
+            engine_exists = pool_manager.sqlserver_sync_engine if has_attr else None
+            
+            if not has_attr or not engine_exists:
+                # Only log warning once per session to avoid spam
+                if not hasattr(self, '_sql_server_warned'):
+                    logger.warning("SQL Server not available, skipping bulk inserts for this session")
+                    self._sql_server_warned = True
                 return 0, len(claims_data)
                 
-            async with pool_manager.get_sqlserver_session() as session:
-                # Prepare bulk insert for claims
-                claims_to_insert = []
-                line_items_to_insert = []
-                
-                for claim in claims_data:
-                    # Prepare claim record
-                    full_patient_name = f"{claim.get('patient_first_name', '')} {claim.get('patient_middle_name', '')} {claim.get('patient_last_name', '')}".strip()
-                    
-                    claim_record = {
-                        'facility_id': claim['facility_id'],
-                        'patient_account_number': claim['patient_account_number'],
-                        'medical_record_number': claim.get('medical_record_number'),
-                        'patient_name': full_patient_name,
-                        'first_name': claim.get('patient_first_name'),
-                        'last_name': claim.get('patient_last_name'),
-                        'date_of_birth': claim.get('patient_date_of_birth'),
-                        'gender': 'U',  # Unknown default
-                        'financial_class_id': self._map_financial_class(claim.get('financial_class')),
-                        'secondary_insurance': None,
-                    }
-                    claims_to_insert.append(claim_record)
-                    
-                    # Prepare line items
-                    for line_item in claim.get('line_items', []):
-                        line_record = {
-                            'facility_id': claim['facility_id'],
-                            'patient_account_number': claim['patient_account_number'],
-                            'line_number': line_item['line_number'],
-                            'procedure_code': line_item['procedure_code'],
-                            'units': line_item.get('units', 1),
-                            'charge_amount': line_item.get('charge_amount', 0),
-                            'service_from_date': line_item.get('service_date'),
-                            'service_to_date': line_item.get('service_date'),
-                            'diagnosis_pointer': line_item.get('diagnosis_pointers'),
-                            'rendering_provider_id': None,  # Skip provider lookup for performance
-                        }
-                        line_items_to_insert.append(line_record)
-                
-                # Execute bulk inserts
-                if claims_to_insert:
-                    await self._execute_bulk_insert(session, 'dbo.claims', claims_to_insert)
-                    successful_inserts += len(claims_to_insert)
-                    
-                if line_items_to_insert:
-                    await self._execute_bulk_insert(session, 'dbo.claims_line_items', line_items_to_insert)
-                    
-                await session.commit()
-                
-                insert_time = time.time() - start_time
-                logger.info(f"Bulk inserted {successful_inserts} claims with {len(line_items_to_insert)} line items in {insert_time:.2f}s")
-                
+            # Use sync engine in thread pool for compatibility
+            successful_inserts = await self._bulk_insert_sqlserver_sync(claims_data)
+            
+            insert_time = time.time() - start_time
+            logger.info(f"Bulk inserted {successful_inserts} claims to SQL Server in {insert_time:.2f}s")
+            
         except Exception as e:
             logger.error(f"Bulk insert failed: {e}")
             failed_inserts = len(claims_data)
             
         return successful_inserts, failed_inserts
         
-    async def _execute_bulk_insert(self, session: AsyncSession, table_name: str, records: List[Dict]):
-        """Execute bulk insert using SQL Server efficient methods."""
-        if not records:
-            return
-            
-        # For SQL Server, use bulk insert with VALUES clause
-        try:
-            if table_name == 'dbo.claims':
-                # Bulk insert claims
-                values_clause = []
-                params = {}
+    async def _bulk_insert_sqlserver_sync(self, claims_data: List[Dict]) -> int:
+        """Execute SQL Server bulk insert using sync engine in thread pool."""
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def sync_bulk_insert():
+            successful_inserts = 0
+            try:
+                with pool_manager.sqlserver_sync_engine.connect() as conn:
+                    # Prepare bulk insert for claims
+                    claims_to_insert = []
+                    line_items_to_insert = []
+                    
+                    for claim in claims_data:
+                        # Prepare claim record
+                        full_patient_name = f"{claim.get('patient_first_name', '')} {claim.get('patient_middle_name', '')} {claim.get('patient_last_name', '')}".strip()
+                        
+                        claim_record = {
+                            'facility_id': claim['facility_id'],
+                            'patient_account_number': claim['patient_account_number'],
+                            'medical_record_number': claim.get('medical_record_number'),
+                            'patient_name': full_patient_name,
+                            'first_name': claim.get('patient_first_name'),
+                            'last_name': claim.get('patient_last_name'),
+                            'date_of_birth': claim.get('patient_date_of_birth'),
+                            'gender': 'U',  # Unknown default
+                            'financial_class_id': self._map_financial_class(claim.get('financial_class')),
+                            'secondary_insurance': None,
+                        }
+                        claims_to_insert.append(claim_record)
+                        
+                        # Prepare line items
+                        for line_item in claim.get('line_items', []):
+                            line_record = {
+                                'facility_id': claim['facility_id'],
+                                'patient_account_number': claim['patient_account_number'],
+                                'line_number': line_item['line_number'],
+                                'procedure_code': line_item['procedure_code'],
+                                'units': line_item.get('units', 1),
+                                'charge_amount': line_item.get('charge_amount', 0),
+                                'service_from_date': line_item.get('service_date'),
+                                'service_to_date': line_item.get('service_date'),
+                                'diagnosis_pointer': line_item.get('diagnosis_pointers'),
+                                'rendering_provider_id': None,  # Skip provider lookup for performance
+                            }
+                            line_items_to_insert.append(line_record)
+                    
+                    # Execute bulk inserts using simple INSERT statements
+                    if claims_to_insert:
+                        # Bulk insert claims using executemany for better performance
+                        claims_query = text("""
+                            INSERT INTO dbo.claims (
+                                facility_id, patient_account_number, medical_record_number,
+                                patient_name, first_name, last_name, date_of_birth,
+                                gender, financial_class_id, secondary_insurance
+                            ) VALUES (
+                                :facility_id, :patient_account_number, :medical_record_number,
+                                :patient_name, :first_name, :last_name, :date_of_birth,
+                                :gender, :financial_class_id, :secondary_insurance
+                            )
+                        """)
+                        
+                        conn.execute(claims_query, claims_to_insert)
+                        successful_inserts = len(claims_to_insert)
+                        
+                    if line_items_to_insert:
+                        # Bulk insert line items
+                        line_items_query = text("""
+                            INSERT INTO dbo.claims_line_items (
+                                facility_id, patient_account_number, line_number,
+                                procedure_code, units, charge_amount,
+                                service_from_date, service_to_date,
+                                diagnosis_pointer, rendering_provider_id
+                            ) VALUES (
+                                :facility_id, :patient_account_number, :line_number,
+                                :procedure_code, :units, :charge_amount,
+                                :service_from_date, :service_to_date,
+                                :diagnosis_pointer, :rendering_provider_id
+                            )
+                        """)
+                        
+                        conn.execute(line_items_query, line_items_to_insert)
+                    
+                    conn.commit()
+                    
+            except Exception as e:
+                logger.error(f"Sync SQL Server insert failed: {e}")
+                successful_inserts = 0
                 
-                for i, record in enumerate(records):
-                    value_params = []
-                    for key, value in record.items():
-                        param_name = f"{key}_{i}"
-                        params[param_name] = value
-                        value_params.append(f":{param_name}")
-                    values_clause.append(f"({', '.join(value_params)})")
-                
-                query = text(f"""
-                    INSERT INTO {table_name} (
-                        facility_id, patient_account_number, medical_record_number,
-                        patient_name, first_name, last_name, date_of_birth,
-                        gender, financial_class_id, secondary_insurance
-                    ) VALUES {', '.join(values_clause)}
-                """)
-                
-                await session.execute(query, params)
-                
-            elif table_name == 'dbo.claims_line_items':
-                # Bulk insert line items
-                values_clause = []
-                params = {}
-                
-                for i, record in enumerate(records):
-                    value_params = []
-                    for key, value in record.items():
-                        param_name = f"{key}_{i}"
-                        params[param_name] = value
-                        value_params.append(f":{param_name}")
-                    values_clause.append(f"({', '.join(value_params)})")
-                
-                query = text(f"""
-                    INSERT INTO {table_name} (
-                        facility_id, patient_account_number, line_number,
-                        procedure_code, units, charge_amount,
-                        service_from_date, service_to_date,
-                        diagnosis_pointer, rendering_provider_id
-                    ) VALUES {', '.join(values_clause)}
-                """)
-                
-                await session.execute(query, params)
-                
-        except Exception as e:
-            logger.error(f"Bulk insert to {table_name} failed: {e}")
-            raise
+            return successful_inserts
+        
+        # Execute in thread pool to avoid blocking async loop
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = await loop.run_in_executor(executor, sync_bulk_insert)
+        
+        return result
+        
             
     async def bulk_update_claim_status(self, claim_updates: List[Dict]) -> int:
         """Bulk update claim processing status in PostgreSQL."""
