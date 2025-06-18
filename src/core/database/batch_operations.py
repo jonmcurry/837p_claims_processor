@@ -305,6 +305,15 @@ class BatchDatabaseOperations:
                         
                         # Prepare line items
                         for line_item in claim.get('line_items', []):
+                            # Convert diagnosis pointers from list to comma-separated string
+                            diagnosis_pointers = line_item.get('diagnosis_pointers')
+                            if isinstance(diagnosis_pointers, list):
+                                diagnosis_pointer_str = ','.join(map(str, diagnosis_pointers))
+                            elif isinstance(diagnosis_pointers, str):
+                                diagnosis_pointer_str = diagnosis_pointers
+                            else:
+                                diagnosis_pointer_str = '1'  # Default to first diagnosis
+                            
                             line_record = {
                                 'facility_id': claim['facility_id'],
                                 'patient_account_number': claim['patient_account_number'],
@@ -314,7 +323,7 @@ class BatchDatabaseOperations:
                                 'charge_amount': line_item.get('charge_amount', 0),
                                 'service_from_date': line_item.get('service_date'),
                                 'service_to_date': line_item.get('service_date'),
-                                'diagnosis_pointer': line_item.get('diagnosis_pointers'),
+                                'diagnosis_pointer': diagnosis_pointer_str,
                                 'rendering_provider_id': None,  # Skip provider lookup for performance
                             }
                             line_items_to_insert.append(line_record)
