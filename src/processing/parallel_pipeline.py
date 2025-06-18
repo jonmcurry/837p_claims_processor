@@ -82,7 +82,7 @@ class ParallelClaimsProcessor:
         self.concurrency_limits = {
             'validation': 50,       # High concurrency for validation
             'rvu_calculation': 40,  # High concurrency for calculations
-            'transfer': 5,          # Low concurrency for SQL Server to prevent deadlocks
+            'transfer': 20,         # Higher concurrency for PostgreSQL production transfers
         }
         
     async def process_claims_parallel(self, batch_id: str = None, limit: int = None) -> ParallelProcessingResult:
@@ -274,7 +274,7 @@ class ParallelClaimsProcessor:
         stage_start = time.time()
         successful_transfers, transfer_failures = await self._transfer_claims_parallel(calculated_claims)
         batch_result.stage_times['transfer'] = time.time() - stage_start
-        # Count claims as successfully processed even if SQL Server transfer fails
+        # Count claims as successfully processed even if PostgreSQL production transfer fails
         batch_result.processed_claims = len(calculated_claims) - len(transfer_failures)
         batch_result.failed_claims += len(transfer_failures)
         
@@ -506,7 +506,7 @@ class ParallelClaimsProcessor:
         return calculated_claims, failed_claims
         
     async def _transfer_claims_parallel(self, claims_data: List[Dict]) -> Tuple[int, List[Dict]]:
-        """Transfer claims to SQL Server in parallel with bulk operations."""
+        """Transfer claims to PostgreSQL production database in parallel with bulk operations."""
         successful_transfers = 0
         failed_claims = []
         
@@ -515,9 +515,9 @@ class ParallelClaimsProcessor:
         claim_batches = [claims_data[i:i + batch_size] for i in range(0, len(claims_data), batch_size)]
         
         async def transfer_batch(claim_batch: List[Dict]) -> Tuple[int, List[Dict]]:
-            """Transfer a batch of claims to SQL Server."""
+            """Transfer a batch of claims to PostgreSQL production database."""
             try:
-                success_count, fail_count = await batch_ops.bulk_insert_claims_sqlserver(claim_batch)
+                success_count, fail_count = await batch_ops.bulk_insert_claims_production(claim_batch)
                 return success_count, []
             except Exception as e:
                 logger.exception("Batch transfer failed")

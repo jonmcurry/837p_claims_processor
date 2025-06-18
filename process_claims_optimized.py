@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-Ultra High-Performance Claims Processing Pipeline
+Ultra High-Performance Claims Processing Pipeline - PostgreSQL-Only Architecture
 
 Optimized for 100,000 claims in 15 seconds (6,667+ claims/second)
 
 Features:
+- PostgreSQL-only dual database architecture (staging + production)
 - Optimized connection pooling with warm-up
-- RVU cache with preloading  
-- Batch database operations
+- Memcached RVU cache with preloading  
+- High-performance bulk PostgreSQL operations
 - Parallel processing with async/await
-- Performance monitoring
+- Real-time performance monitoring
+
+Architecture:
+- smart_claims_staging: Claims processing workflow
+- smart_pro_claims: Production data and analytics
 
 Usage:
     python process_claims_optimized.py                     # Process all pending claims
@@ -195,8 +200,8 @@ class OptimizedClaimsProcessor:
             
             # Database pool performance
             pool_stats = pool_manager.get_pool_stats()
-            print(f"   • PostgreSQL Pool: {pool_stats.get('postgres', {}).get('total', 0)} connections")
-            print(f"   • SQL Server Pool: {pool_stats.get('sqlserver', {}).get('total', 0)} connections")
+            print(f"   • PostgreSQL Staging Pool: {pool_stats.get('postgres_staging', {}).get('total', 0)} connections")
+            print(f"   • PostgreSQL Production Pool: {pool_stats.get('postgres_production', {}).get('total', 0)} connections")
             
             # Cache performance
             cache_stats = rvu_cache.get_cache_stats()
@@ -205,11 +210,11 @@ class OptimizedClaimsProcessor:
             
             # Database statistics
             db_stats = await batch_ops.get_processing_statistics()
-            postgres_stats = db_stats.get('postgres', {})
-            sqlserver_stats = db_stats.get('sqlserver', {})
+            staging_stats = db_stats.get('staging', {})
+            production_stats = db_stats.get('production', {})
             
-            print(f"   • PostgreSQL Claims: {sum(postgres_stats.values()) if postgres_stats else 0:,}")
-            print(f"   • SQL Server Claims: {sqlserver_stats.get('total_claims', 0):,}")
+            print(f"   • Staging Claims: {sum(staging_stats.values()) if staging_stats else 0:,}")
+            print(f"   • Production Claims: {production_stats.get('total_processed_claims', 0):,}")
             
         except Exception as e:
             logger.warning("System performance display failed", error=str(e))
