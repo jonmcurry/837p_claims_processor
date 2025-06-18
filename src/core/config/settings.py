@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     api_prefix: str = Field(default="/api/v1")
     cors_origins: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
-    # PostgreSQL Configuration
+    # PostgreSQL Configuration - Staging Database
     pg_host: str = Field(default="localhost")
     pg_port: int = Field(default=5432)
     pg_database: str = Field(default="claims_staging")
@@ -40,24 +40,23 @@ class Settings(BaseSettings):
     pg_pool_timeout: int = Field(default=30)
     pg_command_timeout: int = Field(default=60)
 
-    # SQL Server Configuration
-    sql_host: str = Field(default="localhost")
-    sql_port: int = Field(default=1433)
-    sql_database: str = Field(default="smart_pro_claims")
-    sql_user: str = Field(default="claims_analytics_user")
-    sql_password: SecretStr
-    sql_pool_size: int = Field(default=25)
-    sql_pool_timeout: int = Field(default=20)
-    sql_command_timeout: int = Field(default=120)
+    # PostgreSQL Configuration - Production Database (formerly SQL Server)
+    pg_prod_host: str = Field(default="localhost")
+    pg_prod_port: int = Field(default=5432)
+    pg_prod_database: str = Field(default="smart_pro_claims")
+    pg_prod_user: str = Field(default="claims_user")
+    pg_prod_password: SecretStr
+    pg_prod_pool_min: int = Field(default=10)
+    pg_prod_pool_max: int = Field(default=50)
+    pg_prod_pool_timeout: int = Field(default=30)
+    pg_prod_command_timeout: int = Field(default=120)
 
-    # Redis Configuration
-    redis_host: str = Field(default="localhost")
-    redis_port: int = Field(default=6379)
-    redis_password: Optional[SecretStr] = Field(default=None)
-    redis_db: int = Field(default=0)
-    redis_pool_min: int = Field(default=10)
-    redis_pool_max: int = Field(default=50)
-    redis_ttl_seconds: int = Field(default=3600)
+    # Memcached Configuration
+    memcached_host: str = Field(default="localhost")
+    memcached_port: int = Field(default=11211)
+    memcached_pool_min: int = Field(default=10)
+    memcached_pool_max: int = Field(default=50)
+    memcached_ttl_seconds: int = Field(default=3600)
 
     # Security Configuration
     secret_key: SecretStr
@@ -155,22 +154,18 @@ class Settings(BaseSettings):
         )
 
     @property
-    def sqlserver_url(self) -> str:
-        """Construct SQL Server connection URL."""
+    def postgres_prod_url(self) -> str:
+        """Construct PostgreSQL production database connection URL."""
         return (
-            f"mssql+pyodbc://{self.sql_user}:"
-            f"{self.sql_password.get_secret_value()}@"
-            f"{self.sql_host}:{self.sql_port}/{self.sql_database}"
-            f"?driver=ODBC+Driver+17+for+SQL+Server"
+            f"postgresql+asyncpg://{self.pg_prod_user}:"
+            f"{self.pg_prod_password.get_secret_value()}@"
+            f"{self.pg_prod_host}:{self.pg_prod_port}/{self.pg_prod_database}"
         )
 
     @property
-    def redis_url(self) -> str:
-        """Construct Redis connection URL."""
-        password = ""
-        if self.redis_password:
-            password = f":{self.redis_password.get_secret_value()}@"
-        return f"redis://{password}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+    def memcached_url(self) -> str:
+        """Construct Memcached connection URL."""
+        return f"{self.memcached_host}:{self.memcached_port}"
 
     @property
     def is_production(self) -> bool:
@@ -184,7 +179,7 @@ class Settings(BaseSettings):
 
     def get_db_config(self, db_type: str) -> Dict[str, Any]:
         """Get database configuration by type."""
-        if db_type == "postgresql":
+        if db_type == "postgresql" or db_type == "staging":
             return {
                 "host": self.pg_host,
                 "port": self.pg_port,
@@ -196,16 +191,17 @@ class Settings(BaseSettings):
                 "timeout": self.pg_pool_timeout,
                 "command_timeout": self.pg_command_timeout,
             }
-        elif db_type == "sqlserver":
+        elif db_type == "postgresql_prod" or db_type == "production":
             return {
-                "host": self.sql_host,
-                "port": self.sql_port,
-                "database": self.sql_database,
-                "user": self.sql_user,
-                "password": self.sql_password.get_secret_value(),
-                "pool_size": self.sql_pool_size,
-                "pool_timeout": self.sql_pool_timeout,
-                "command_timeout": self.sql_command_timeout,
+                "host": self.pg_prod_host,
+                "port": self.pg_prod_port,
+                "database": self.pg_prod_database,
+                "user": self.pg_prod_user,
+                "password": self.pg_prod_password.get_secret_value(),
+                "min_size": self.pg_prod_pool_min,
+                "max_size": self.pg_prod_pool_max,
+                "timeout": self.pg_prod_pool_timeout,
+                "command_timeout": self.pg_prod_command_timeout,
             }
         else:
             raise ValueError(f"Unknown database type: {db_type}")

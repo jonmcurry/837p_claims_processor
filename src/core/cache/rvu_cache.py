@@ -6,8 +6,9 @@ import time
 from decimal import Decimal
 from typing import Dict, List, Optional, Set, Tuple
 
-import redis.asyncio as redis
+import aiomcache
 from sqlalchemy import text
+import pickle
 
 from src.core.config.settings import settings
 from src.core.database.pool_manager import pool_manager
@@ -66,7 +67,7 @@ class OptimizedRVUCache:
     """High-performance RVU cache with preloading and batch operations."""
     
     def __init__(self):
-        self.redis_client: Optional[redis.Redis] = None
+        self.memcached_client: Optional[aiomcache.Client] = None
         self.local_cache: Dict[str, RVUCacheData] = {}
         self.cache_hits = 0
         self.cache_misses = 0
@@ -75,28 +76,21 @@ class OptimizedRVUCache:
         self._cache_lock = asyncio.Lock()
         
     async def initialize(self):
-        """Initialize Redis connection and preload cache."""
-        if self.redis_client:
+        """Initialize Memcached connection and preload cache."""
+        if self.memcached_client:
             return
             
         logger.info("Initializing RVU cache system...")
         start_time = time.time()
         
         try:
-            # Connect to Redis with shorter timeout for faster fallback
-            self.redis_client = redis.from_url(
-                settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True,
-                max_connections=20,  # Reduced connections
-                retry_on_timeout=False,  # Faster fallback
-                socket_keepalive=False,  # Disable for faster startup
-                socket_connect_timeout=1,  # 1 second timeout
-            )
+            # Connect to Memcached
+            host, port = settings.memcached_url.split(':')
+            self.memcached_client = aiomcache.Client(host, int(port))
             
             # Test connection with timeout
-            await asyncio.wait_for(self.redis_client.ping(), timeout=1.0)
-            logger.info("Redis connection established")
+            await asyncio.wait_for(self.memcached_client.stats(), timeout=1.0)
+            logger.info("Memcached connection established")
             
             # Preload RVU data
             await self._preload_rvu_data()
@@ -106,9 +100,9 @@ class OptimizedRVUCache:
                        f"loaded {len(self.local_cache)} procedure codes")
             
         except Exception as e:
-            logger.error(f"Failed to initialize RVU cache: {e}")
-            # Continue without Redis - use local cache only
-            self.redis_client = None
+            logger.error(f"Failed to initialize RVU cache: {type(e).__name__}: {str(e)}")
+            # Continue without Memcached - use local cache only
+            self.memcached_client = None
             # Load defaults immediately instead of database query for faster startup
             self._load_default_rvus()
             self.preload_complete = True
@@ -118,11 +112,11 @@ class OptimizedRVUCache:
         logger.info("Preloading RVU data...")
         
         try:
-            # Try loading from Redis first
-            if self.redis_client:
-                await self._preload_from_redis()
+            # Try loading from Memcached first
+            if self.memcached_client:
+                await self._preload_from_memcached()
                 
-            # If Redis cache is empty, load from database in background
+            # If Memcached cache is empty, load from database in background
             if not self.local_cache:
                 # Start with defaults for immediate availability
                 self._load_default_rvus()
@@ -137,33 +131,32 @@ class OptimizedRVUCache:
             # Load defaults as fallback
             self._load_default_rvus()
             
-    async def _preload_from_redis(self):
-        """Load RVU data from Redis cache."""
-        if not self.redis_client:
+    async def _preload_from_memcached(self):
+        """Load RVU data from Memcached cache."""
+        if not self.memcached_client:
             return
             
         try:
-            # Get all RVU keys
-            rvu_keys = await self.redis_client.keys("rvu:*")
+            # For Memcached, we'll store a list of known procedure codes
+            codes_key = "rvu:codes"
+            codes_data = await self.memcached_client.get(codes_key.encode())
             
-            if rvu_keys:
-                # Batch load from Redis
-                pipeline = self.redis_client.pipeline()
-                for key in rvu_keys:
-                    pipeline.hgetall(key)
-                    
-                results = await pipeline.execute()
+            if codes_data:
+                procedure_codes = pickle.loads(codes_data)
                 
-                for key, data in zip(rvu_keys, results):
+                # Batch load from Memcached
+                for code in procedure_codes:
+                    key = f"rvu:{code}"
+                    data = await self.memcached_client.get(key.encode())
                     if data:
-                        procedure_code = key.replace("rvu:", "")
-                        rvu_data = RVUCacheData.from_dict(data)
-                        self.local_cache[procedure_code] = rvu_data
+                        rvu_dict = pickle.loads(data)
+                        rvu_data = RVUCacheData.from_dict(rvu_dict)
+                        self.local_cache[code] = rvu_data
                         
-                logger.info(f"Loaded {len(self.local_cache)} RVU codes from Redis")
+                logger.info(f"Loaded {len(self.local_cache)} RVU codes from Memcached")
                 
         except Exception as e:
-            logger.warning(f"Failed to preload from Redis: {e}")
+            logger.warning(f"Failed to preload from Memcached: {e}")
             
     async def _preload_from_database(self):
         """Load RVU data from PostgreSQL database."""
@@ -218,9 +211,9 @@ class OptimizedRVUCache:
                     
                 logger.info(f"Loaded {len(self.local_cache)} RVU codes from database")
                 
-                # Cache to Redis for next time
-                if self.redis_client:
-                    await self._cache_batch_to_redis(list(self.local_cache.values()))
+                # Cache to Memcached for next time
+                if self.memcached_client:
+                    await self._cache_batch_to_memcached(list(self.local_cache.values()))
                     
         except Exception as e:
             logger.error(f"Failed to load RVU data from database: {e}")
@@ -252,24 +245,28 @@ class OptimizedRVUCache:
                 )
                 self.local_cache[procedure_code] = rvu_data
                 
-    async def _cache_batch_to_redis(self, rvu_data_list: List[RVUCacheData]):
-        """Cache a batch of RVU data to Redis."""
-        if not self.redis_client:
+    async def _cache_batch_to_memcached(self, rvu_data_list: List[RVUCacheData]):
+        """Cache a batch of RVU data to Memcached."""
+        if not self.memcached_client:
             return
             
         try:
-            pipeline = self.redis_client.pipeline()
+            # Store all procedure codes for later retrieval
+            codes = [rvu.procedure_code for rvu in rvu_data_list]
+            codes_key = "rvu:codes"
+            codes_data = pickle.dumps(codes)
+            await self.memcached_client.set(codes_key.encode(), codes_data, exptime=settings.cache_ttl_rvu)
             
+            # Store individual RVU data
             for rvu_data in rvu_data_list:
                 key = f"rvu:{rvu_data.procedure_code}"
-                pipeline.hset(key, mapping=rvu_data.to_dict())
-                pipeline.expire(key, settings.cache_ttl_rvu)
+                data = pickle.dumps(rvu_data.to_dict())
+                await self.memcached_client.set(key.encode(), data, exptime=settings.cache_ttl_rvu)
                 
-            await pipeline.execute()
-            logger.debug(f"Cached {len(rvu_data_list)} RVU codes to Redis")
+            logger.debug(f"Cached {len(rvu_data_list)} RVU codes to Memcached")
             
         except Exception as e:
-            logger.warning(f"Failed to cache RVU data to Redis: {e}")
+            logger.warning(f"Failed to cache RVU data to Memcached: {e}")
             
     def _load_default_rvus(self):
         """Load default RVU values for common procedure codes."""
@@ -305,18 +302,20 @@ class OptimizedRVUCache:
             
         self.cache_misses += 1
         
-        # Try Redis if local cache misses
-        if self.redis_client:
+        # Try Memcached if local cache misses
+        if self.memcached_client:
             try:
-                data = await self.redis_client.hgetall(f"rvu:{procedure_code}")
+                key = f"rvu:{procedure_code}"
+                data = await self.memcached_client.get(key.encode())
                 if data:
-                    rvu_data = RVUCacheData.from_dict(data)
+                    rvu_dict = pickle.loads(data)
+                    rvu_data = RVUCacheData.from_dict(rvu_dict)
                     # Cache locally for future access
                     async with self._cache_lock:
                         self.local_cache[procedure_code] = rvu_data
                     return rvu_data
             except Exception as e:
-                logger.warning(f"Redis lookup failed for {procedure_code}: {e}")
+                logger.warning(f"Memcached lookup failed for {procedure_code}: {e}")
                 
         # Fallback to database lookup
         return await self._lookup_from_database(procedure_code)
@@ -343,22 +342,19 @@ class OptimizedRVUCache:
         return results
         
     async def _batch_lookup_missing_codes(self, procedure_codes: List[str]) -> Dict[str, RVUCacheData]:
-        """Batch lookup missing procedure codes from Redis and database."""
+        """Batch lookup missing procedure codes from Memcached and database."""
         results = {}
         
-        # Try Redis first for all missing codes
-        if self.redis_client and procedure_codes:
+        # Try Memcached first for all missing codes
+        if self.memcached_client and procedure_codes:
             try:
-                pipeline = self.redis_client.pipeline()
-                for code in procedure_codes:
-                    pipeline.hgetall(f"rvu:{code}")
-                    
-                redis_results = await pipeline.execute()
-                
                 still_missing = []
-                for code, data in zip(procedure_codes, redis_results):
+                for code in procedure_codes:
+                    key = f"rvu:{code}"
+                    data = await self.memcached_client.get(key.encode())
                     if data:
-                        rvu_data = RVUCacheData.from_dict(data)
+                        rvu_dict = pickle.loads(data)
+                        rvu_data = RVUCacheData.from_dict(rvu_dict)
                         results[code] = rvu_data
                         # Cache locally
                         async with self._cache_lock:
@@ -369,7 +365,7 @@ class OptimizedRVUCache:
                 procedure_codes = still_missing
                 
             except Exception as e:
-                logger.warning(f"Batch Redis lookup failed: {e}")
+                logger.warning(f"Batch Memcached lookup failed: {e}")
                 
         # Fallback to database for remaining codes
         if procedure_codes:
@@ -416,14 +412,14 @@ class OptimizedRVUCache:
                     async with self._cache_lock:
                         self.local_cache[procedure_code] = rvu_data
                         
-                    # Cache to Redis
-                    if self.redis_client:
+                    # Cache to Memcached
+                    if self.memcached_client:
                         try:
                             key = f"rvu:{procedure_code}"
-                            await self.redis_client.hset(key, mapping=rvu_data.to_dict())
-                            await self.redis_client.expire(key, settings.cache_ttl_rvu)
+                            data = pickle.dumps(rvu_data.to_dict())
+                            await self.memcached_client.set(key.encode(), data, exptime=settings.cache_ttl_rvu)
                         except Exception as e:
-                            logger.warning(f"Failed to cache to Redis: {e}")
+                            logger.warning(f"Failed to cache to Memcached: {e}")
                             
                     return rvu_data
                     
@@ -478,9 +474,9 @@ class OptimizedRVUCache:
                 async with self._cache_lock:
                     self.local_cache.update(results)
                     
-                # Cache to Redis
-                if self.redis_client and results:
-                    await self._cache_batch_to_redis(list(results.values()))
+                # Cache to Memcached
+                if self.memcached_client and results:
+                    await self._cache_batch_to_memcached(list(results.values()))
                     
         except Exception as e:
             logger.error(f"Batch database lookup failed: {e}")
@@ -515,10 +511,10 @@ class OptimizedRVUCache:
             await self._preload_from_database()
             
     async def close(self):
-        """Close Redis connection."""
-        if self.redis_client:
-            await self.redis_client.close()
-            self.redis_client = None
+        """Close Memcached connection."""
+        if self.memcached_client:
+            await self.memcached_client.close()
+            self.memcached_client = None
 
 
 # Global cache instance

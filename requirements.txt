@@ -16,9 +16,8 @@ pyodbc>=4.0.0
 psycopg2-binary>=2.9.0
 
 # Caching & Queue
-redis[hiredis]>=5.0.1
-celery[redis]>=5.3.4
-aiocache[redis]>=0.12.2
+aiomcache>=0.8.1
+celery>=5.3.4
 
 # Machine Learning
 numpy>=1.26.3

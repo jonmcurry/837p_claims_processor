@@ -3,7 +3,11 @@
 
 -- Add non-clustered indexes for the MERGE operation lookup columns
 -- This helps SQL Server acquire locks more efficiently
-use smart_pro_claims
+use smart_pro_claims;
+
+-- Enable row-level locking on tables (fixes ROWLOCK hint error)
+ALTER TABLE dbo.claims SET (LOCK_ESCALATION = AUTO);
+ALTER TABLE dbo.claims_line_items SET (LOCK_ESCALATION = AUTO);
 -- Index for claims table MERGE operation
 IF NOT EXISTS (
     SELECT * FROM sys.indexes 

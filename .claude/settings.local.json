@@ -30,7 +30,13 @@
       "Bash(redis-cli:*)",
       "Bash(docker:*)",
       "Bash(. venv/Scripts/activate)",
-      "Bash(. venv/bin/activate)"
+      "Bash(. venv/bin/activate)",
+      "Bash(if [ -f .env ])",
+      "Bash(then grep -n \"REDIS\" .env)",
+      "Bash(fi)",
+      "Bash(mv:*)",
+      "Bash(sqlcmd:*)",
+      "Bash(pip3 list:*)"
     ],
     "deny": []
   }
