@@ -106,14 +106,14 @@ class OptimizedPoolManager:
         """Pre-create connections to warm up the pools."""
         logger.info("Warming up database connection pools...")
         
-        # Warm up PostgreSQL pool
+        # Warm up PostgreSQL pool (reduced for faster startup)
         pg_warmup_tasks = []
-        for i in range(20):  # Create 20 initial connections
+        for i in range(5):  # Create 5 initial connections (reduced from 20)
             pg_warmup_tasks.append(self._warmup_postgres_connection())
             
-        # Warm up SQL Server pool  
+        # Warm up SQL Server pool (reduced for faster startup)
         ss_warmup_tasks = []
-        for i in range(15):  # Create 15 initial connections
+        for i in range(3):  # Create 3 initial connections (reduced from 15)
             ss_warmup_tasks.append(self._warmup_sqlserver_connection())
             
         # Execute warmup tasks concurrently

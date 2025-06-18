@@ -83,19 +83,19 @@ class OptimizedRVUCache:
         start_time = time.time()
         
         try:
-            # Connect to Redis
+            # Connect to Redis with shorter timeout for faster fallback
             self.redis_client = redis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,
-                max_connections=50,
-                retry_on_timeout=True,
-                socket_keepalive=True,
-                socket_keepalive_options={},
+                max_connections=20,  # Reduced connections
+                retry_on_timeout=False,  # Faster fallback
+                socket_keepalive=False,  # Disable for faster startup
+                socket_connect_timeout=1,  # 1 second timeout
             )
             
-            # Test connection
-            await self.redis_client.ping()
+            # Test connection with timeout
+            await asyncio.wait_for(self.redis_client.ping(), timeout=1.0)
             logger.info("Redis connection established")
             
             # Preload RVU data
@@ -109,7 +109,9 @@ class OptimizedRVUCache:
             logger.error(f"Failed to initialize RVU cache: {e}")
             # Continue without Redis - use local cache only
             self.redis_client = None
-            await self._preload_from_database()
+            # Load defaults immediately instead of database query for faster startup
+            self._load_default_rvus()
+            self.preload_complete = True
             
     async def _preload_rvu_data(self):
         """Preload commonly used RVU data into cache."""
@@ -120,9 +122,12 @@ class OptimizedRVUCache:
             if self.redis_client:
                 await self._preload_from_redis()
                 
-            # If Redis cache is empty or unavailable, load from database
+            # If Redis cache is empty, load from database in background
             if not self.local_cache:
-                await self._preload_from_database()
+                # Start with defaults for immediate availability
+                self._load_default_rvus()
+                # Then load additional data from database asynchronously
+                asyncio.create_task(self._preload_from_database_background())
                 
             self.preload_complete = True
             logger.info(f"RVU preload complete: {len(self.local_cache)} codes cached")
@@ -166,7 +171,21 @@ class OptimizedRVUCache:
         
         try:
             async with pool_manager.get_postgres_session() as session:
-                # Load all active RVU data in batches 
+                # Check if rvu_data table exists first
+                table_check = text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'rvu_data'
+                    )
+                """)
+                
+                table_exists = await session.execute(table_check)
+                if not table_exists.scalar():
+                    logger.warning("RVU table not found, using default values")
+                    self._load_default_rvus()
+                    return
+                
+                # Load only most common RVU data for faster startup
                 query = text("""
                     SELECT 
                         procedure_code,
@@ -178,16 +197,24 @@ class OptimizedRVUCache:
                         end_date
                     FROM rvu_data
                     WHERE (end_date IS NULL OR end_date >= CURRENT_DATE)
+                    AND procedure_code IN ('99213', '99214', '99215', '99223', '99233', 
+                                          '99281', '99282', '99283', '99284', '99285',
+                                          '10060', '36415', '71020', '85025', '80053')
                     ORDER BY procedure_code, effective_date DESC
+                    LIMIT 50
                 """)
                 
                 result = await session.execute(query)
                 rows = result.fetchall()
                 
-                # Process in batches to avoid memory issues
-                for i in range(0, len(rows), self.batch_size):
-                    batch = rows[i:i + self.batch_size]
-                    await self._process_rvu_batch(batch)
+                if rows:
+                    # Process in batches to avoid memory issues
+                    for i in range(0, len(rows), self.batch_size):
+                        batch = rows[i:i + self.batch_size]
+                        await self._process_rvu_batch(batch)
+                else:
+                    logger.info("No RVU data found in database, using defaults")
+                    self._load_default_rvus()
                     
                 logger.info(f"Loaded {len(self.local_cache)} RVU codes from database")
                 
@@ -198,6 +225,14 @@ class OptimizedRVUCache:
         except Exception as e:
             logger.error(f"Failed to load RVU data from database: {e}")
             self._load_default_rvus()
+            
+    async def _preload_from_database_background(self):
+        """Load RVU data from database in background without blocking startup."""
+        try:
+            logger.info("Loading additional RVU data from database in background...")
+            await self._preload_from_database()
+        except Exception as e:
+            logger.warning(f"Background RVU loading failed: {e}")
             
     async def _process_rvu_batch(self, batch: List):
         """Process a batch of RVU data from database."""
@@ -241,25 +276,17 @@ class OptimizedRVUCache:
         logger.info("Loading default RVU values")
         
         default_rvus = {
-            # Evaluation and Management
+            # Most common E&M codes (optimized set for faster startup)
             "99213": RVUCacheData("99213", Decimal("0.97"), Decimal("0.85"), Decimal("0.04")),
             "99214": RVUCacheData("99214", Decimal("1.50"), Decimal("1.30"), Decimal("0.06")),
-            "99215": RVUCacheData("99215", Decimal("2.11"), Decimal("1.83"), Decimal("0.09")),
             "99223": RVUCacheData("99223", Decimal("3.05"), Decimal("1.20"), Decimal("0.12")),
-            "99232": RVUCacheData("99232", Decimal("1.28"), Decimal("0.80"), Decimal("0.05")),
             "99233": RVUCacheData("99233", Decimal("1.93"), Decimal("1.10"), Decimal("0.08")),
             
-            # Emergency Department
-            "99281": RVUCacheData("99281", Decimal("0.48"), Decimal("0.67"), Decimal("0.02")),
-            "99282": RVUCacheData("99282", Decimal("0.80"), Decimal("1.08"), Decimal("0.04")),
+            # Most common ED codes
             "99283": RVUCacheData("99283", Decimal("1.42"), Decimal("1.95"), Decimal("0.07")),
             "99284": RVUCacheData("99284", Decimal("2.60"), Decimal("3.52"), Decimal("0.12")),
-            "99285": RVUCacheData("99285", Decimal("4.16"), Decimal("5.71"), Decimal("0.20")),
             
-            # Common Procedures
-            "10060": RVUCacheData("10060", Decimal("1.21"), Decimal("0.95"), Decimal("0.06")),  # Drainage
-            "11042": RVUCacheData("11042", Decimal("1.14"), Decimal("1.42"), Decimal("0.05")),  # Debridement
-            "12001": RVUCacheData("12001", Decimal("0.97"), Decimal("0.85"), Decimal("0.04")),  # Simple repair
+            # Common procedures
             "36415": RVUCacheData("36415", Decimal("0.17"), Decimal("0.13"), Decimal("0.01")),  # Venipuncture
             "71020": RVUCacheData("71020", Decimal("0.22"), Decimal("0.67"), Decimal("0.01")),  # Chest X-ray
             "85025": RVUCacheData("85025", Decimal("0.0"), Decimal("0.28"), Decimal("0.0")),    # CBC
