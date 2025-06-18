@@ -122,3 +122,4 @@ docker-compose.override.yml
 
 # Claude Code specific
 .claude/
+.claude/settings.local.json

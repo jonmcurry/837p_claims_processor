@@ -28,7 +28,9 @@
       "Bash(systemctl:*)",
       "Bash(service redis:*)",
       "Bash(redis-cli:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(. venv/Scripts/activate)",
+      "Bash(. venv/bin/activate)"
     ],
     "deny": []
   }
