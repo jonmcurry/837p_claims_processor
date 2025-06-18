@@ -22,7 +22,13 @@
       "Bash(pip3 install:*)",
       "Bash(rg:*)",
       "Bash(find:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(./venv/bin/python:*)",
+      "Bash(./.venv/bin/python:*)",
+      "Bash(systemctl:*)",
+      "Bash(service redis:*)",
+      "Bash(redis-cli:*)",
+      "Bash(docker:*)"
     ],
     "deny": []
   }

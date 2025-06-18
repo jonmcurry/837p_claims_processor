@@ -97,7 +97,14 @@ class ParallelClaimsProcessor:
             # Initialize systems
             await self._initialize_systems()
             
-            # Stage 1: Parallel data fetching
+            # For large datasets, process in continuous batches  
+            if limit is None:
+                # Process all available claims
+                return await self._process_large_dataset_in_batches(batch_id, 100000, start_time)
+            elif limit > 10000:
+                return await self._process_large_dataset_in_batches(batch_id, limit, start_time)
+            
+            # Stage 1: Parallel data fetching (for smaller datasets)
             stage_start = time.time()
             claims_data = await self._fetch_claims_parallel(batch_id, limit)
             result.stage_times['fetch'] = time.time() - stage_start
@@ -171,6 +178,115 @@ class ParallelClaimsProcessor:
             async_ml_manager.initialize(),
         ]
         await asyncio.gather(*initialization_tasks, return_exceptions=True)
+        
+    async def _process_large_dataset_in_batches(self, batch_id: str = None, total_limit: int = None, start_time: float = None) -> ParallelProcessingResult:
+        """Process large datasets by continuously fetching and processing batches."""
+        result = ParallelProcessingResult()
+        batch_size = 25000  # Process 25000 claims per batch for faster processing
+        processed_total = 0
+        batch_number = 1
+        
+        logger.info(f"Processing large dataset in batches of {batch_size} claims")
+        
+        while True:
+            # Calculate remaining claims to process
+            remaining_limit = None
+            if total_limit:
+                remaining_limit = total_limit - processed_total
+                if remaining_limit <= 0:
+                    break
+                batch_limit = min(batch_size, remaining_limit)
+            else:
+                batch_limit = batch_size
+            
+            logger.info(f"Processing batch {batch_number} (up to {batch_limit} claims)")
+            
+            # Fetch current batch
+            stage_start = time.time()
+            claims_data = await self._fetch_claims_parallel(batch_id, batch_limit)
+            fetch_time = time.time() - stage_start
+            
+            logger.info(f"Fetched {len(claims_data)} claims in batch {batch_number}")
+            
+            if not claims_data:
+                logger.info(f"No more claims to process. Completed {batch_number-1} batches.")
+                break
+                
+            batch_result = await self._process_single_batch(claims_data)
+            
+            # Accumulate results
+            result.total_claims += batch_result.total_claims
+            result.processed_claims += batch_result.processed_claims
+            result.failed_claims += batch_result.failed_claims
+            
+            # Accumulate stage times
+            for stage, time_taken in batch_result.stage_times.items():
+                if stage in result.stage_times:
+                    result.stage_times[stage] += time_taken
+                else:
+                    result.stage_times[stage] = time_taken
+            
+            processed_total += len(claims_data)
+            batch_number += 1
+            
+            logger.info(f"Batch {batch_number-1} complete: {len(claims_data)} claims processed. "
+                       f"Total processed: {processed_total}")
+            
+            # Continue processing until we get no claims or very few claims
+            # (less than 10% of batch size suggests we're near the end)
+            if len(claims_data) < batch_limit * 0.1:
+                logger.info(f"Reached end of available claims (got {len(claims_data)} claims, less than 10% of {batch_limit})")
+                break
+        
+        # Calculate final metrics
+        result.processing_time = time.time() - start_time
+        result.throughput = result.total_claims / result.processing_time if result.processing_time > 0 else 0
+        
+        logger.info(f"Large dataset processing complete: {result.total_claims} total claims, "
+                   f"{result.processed_claims} successful, {result.failed_claims} failed")
+        
+        return result
+        
+    async def _process_single_batch(self, claims_data: List[Dict]) -> ParallelProcessingResult:
+        """Process a single batch of claims and return results."""
+        batch_result = ParallelProcessingResult()
+        batch_result.total_claims = len(claims_data)
+        
+        # Stage 2: Parallel validation + ML processing (combined for efficiency)
+        stage_start = time.time()
+        validated_claims, validation_failures = await self._validate_and_ml_process_parallel(claims_data)
+        batch_result.stage_times['validation_ml'] = time.time() - stage_start
+        batch_result.failed_claims += len(validation_failures)
+        
+        if validation_failures:
+            await self._store_failed_claims_batch(validation_failures)
+            
+        # Stage 3: Parallel RVU calculation
+        stage_start = time.time()
+        calculated_claims, calculation_failures = await self._calculate_claims_parallel(validated_claims)
+        batch_result.stage_times['calculation'] = time.time() - stage_start
+        batch_result.failed_claims += len(calculation_failures)
+        
+        if calculation_failures:
+            await self._store_failed_claims_batch(calculation_failures)
+            
+        # Stage 4: Parallel data transfer
+        stage_start = time.time()
+        successful_transfers, transfer_failures = await self._transfer_claims_parallel(calculated_claims)
+        batch_result.stage_times['transfer'] = time.time() - stage_start
+        # Count claims as successfully processed even if SQL Server transfer fails
+        batch_result.processed_claims = len(calculated_claims) - len(transfer_failures)
+        batch_result.failed_claims += len(transfer_failures)
+        
+        if transfer_failures:
+            await self._store_failed_claims_batch(transfer_failures)
+            
+        # Stage 5: Parallel status updates
+        stage_start = time.time()
+        await self._update_claim_statuses_parallel(calculated_claims)
+        batch_result.stage_times['status_update'] = time.time() - stage_start
+        
+        return batch_result
         
     async def _fetch_claims_parallel(self, batch_id: str = None, limit: int = None) -> List[Dict]:
         """Fetch claims data using optimized parallel queries."""
