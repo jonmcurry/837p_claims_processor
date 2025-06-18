@@ -69,7 +69,10 @@ class OptimizedPoolManager:
                     "timeout": 60,
                     "login_timeout": 30,
                     "autocommit": False,
+                    "isolation_level": "READ COMMITTED",
                 },
+                pool_pre_ping=True,  # Test connections before using them
+                pool_recycle=3600,  # Recycle connections after 1 hour
             )
             # Test connection
             with self.sqlserver_sync_engine.connect() as conn:

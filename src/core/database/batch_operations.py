@@ -285,78 +285,82 @@ class BatchDatabaseOperations:
         return successful_inserts, failed_inserts
         
     async def _bulk_insert_sqlserver_sync(self, claims_data: List[Dict]) -> int:
-        """Execute SQL Server bulk insert using sync engine in thread pool."""
+        """Execute SQL Server bulk insert using sync engine in thread pool with deadlock retry."""
         import asyncio
         from concurrent.futures import ThreadPoolExecutor
+        import random
         
         def sync_bulk_insert():
             successful_inserts = 0
-            try:
-                with pool_manager.sqlserver_sync_engine.connect() as conn:
-                    # Prepare bulk insert for claims
-                    claims_to_insert = []
-                    line_items_to_insert = []
-                    
-                    for claim in claims_data:
-                        # Prepare claim record
-                        full_patient_name = f"{claim.get('patient_first_name', '')} {claim.get('patient_middle_name', '')} {claim.get('patient_last_name', '')}".strip()
+            max_retries = 3
+            
+            for retry in range(max_retries):
+                try:
+                    with pool_manager.sqlserver_sync_engine.connect() as conn:
+                        # Prepare bulk insert for claims
+                        claims_to_insert = []
+                        line_items_to_insert = []
                         
-                        claim_record = {
-                            'facility_id': claim['facility_id'],
-                            'patient_account_number': claim['patient_account_number'],
-                            'medical_record_number': claim.get('medical_record_number'),
-                            'patient_name': full_patient_name,
-                            'first_name': claim.get('patient_first_name'),
-                            'last_name': claim.get('patient_last_name'),
-                            'date_of_birth': claim.get('patient_date_of_birth'),
-                            'gender': 'U',  # Unknown default
-                            'financial_class_id': self._map_financial_class(claim.get('financial_class')),
-                            'secondary_insurance': None,
-                        }
-                        claims_to_insert.append(claim_record)
-                        
-                        # Prepare line items
-                        for line_item in claim.get('line_items', []):
-                            # Convert diagnosis pointers from list to comma-separated string
-                            diagnosis_pointers = line_item.get('diagnosis_pointers')
-                            if isinstance(diagnosis_pointers, list):
-                                diagnosis_pointer_str = ','.join(map(str, diagnosis_pointers))
-                            elif isinstance(diagnosis_pointers, str):
-                                diagnosis_pointer_str = diagnosis_pointers
-                            else:
-                                diagnosis_pointer_str = '1'  # Default to first diagnosis
+                        for claim in claims_data:
+                            # Prepare claim record
+                            full_patient_name = f"{claim.get('patient_first_name', '')} {claim.get('patient_middle_name', '')} {claim.get('patient_last_name', '')}".strip()
                             
-                            line_record = {
+                            claim_record = {
                                 'facility_id': claim['facility_id'],
                                 'patient_account_number': claim['patient_account_number'],
-                                'line_number': line_item['line_number'],
-                                'procedure_code': line_item['procedure_code'],
-                                'units': line_item.get('units', 1),
-                                'charge_amount': line_item.get('charge_amount', 0),
-                                'service_from_date': line_item.get('service_date'),
-                                'service_to_date': line_item.get('service_date'),
-                                'diagnosis_pointer': diagnosis_pointer_str,
-                                'rendering_provider_id': None,  # Skip provider lookup for performance
+                                'medical_record_number': claim.get('medical_record_number'),
+                                'patient_name': full_patient_name,
+                                'first_name': claim.get('patient_first_name'),
+                                'last_name': claim.get('patient_last_name'),
+                                'date_of_birth': claim.get('patient_date_of_birth'),
+                                'gender': 'U',  # Unknown default
+                                'financial_class_id': self._map_financial_class(claim.get('financial_class')),
+                                'secondary_insurance': None,
                             }
-                            line_items_to_insert.append(line_record)
-                    
-                    # Execute bulk inserts using batch MERGE to reduce deadlocks
-                    if claims_to_insert:
-                        # Use batch MERGE with smaller chunks to reduce lock contention
-                        batch_size = 100  # Smaller batches to reduce deadlock risk
-                        
-                        for i in range(0, len(claims_to_insert), batch_size):
-                            batch = claims_to_insert[i:i + batch_size]
+                            claims_to_insert.append(claim_record)
                             
-                            # Build VALUES clause for batch MERGE
-                            values_list = []
-                            params = {}
-                            
-                            for idx, claim_record in enumerate(batch):
-                                param_prefix = f"c{i}_{idx}"
-                                values_list.append(f"(:{param_prefix}_facility_id, :{param_prefix}_patient_account_number, :{param_prefix}_medical_record_number, :{param_prefix}_patient_name, :{param_prefix}_first_name, :{param_prefix}_last_name, :{param_prefix}_date_of_birth, :{param_prefix}_gender, :{param_prefix}_financial_class_id, :{param_prefix}_secondary_insurance)")
+                            # Prepare line items
+                            for line_item in claim.get('line_items', []):
+                                # Convert diagnosis pointers from list to comma-separated string
+                                diagnosis_pointers = line_item.get('diagnosis_pointers')
+                                if isinstance(diagnosis_pointers, list):
+                                    diagnosis_pointer_str = ','.join(map(str, diagnosis_pointers))
+                                elif isinstance(diagnosis_pointers, str):
+                                    diagnosis_pointer_str = diagnosis_pointers
+                                else:
+                                    diagnosis_pointer_str = '1'  # Default to first diagnosis
                                 
-                                params.update({
+                                line_record = {
+                                    'facility_id': claim['facility_id'],
+                                    'patient_account_number': claim['patient_account_number'],
+                                    'line_number': line_item['line_number'],
+                                    'procedure_code': line_item['procedure_code'],
+                                    'units': line_item.get('units', 1),
+                                    'charge_amount': line_item.get('charge_amount', 0),
+                                    'service_from_date': line_item.get('service_date'),
+                                    'service_to_date': line_item.get('service_date'),
+                                    'diagnosis_pointer': diagnosis_pointer_str,
+                                    'rendering_provider_id': None,  # Skip provider lookup for performance
+                                }
+                                line_items_to_insert.append(line_record)
+                        
+                        # Execute bulk inserts using batch MERGE to reduce deadlocks
+                        if claims_to_insert:
+                            # Use batch MERGE with smaller chunks to reduce lock contention
+                            batch_size = 50  # Even smaller batches to reduce deadlock risk
+                            
+                            for i in range(0, len(claims_to_insert), batch_size):
+                                batch = claims_to_insert[i:i + batch_size]
+                                
+                                # Build VALUES clause for batch MERGE
+                                values_list = []
+                                params = {}
+                                
+                                for idx, claim_record in enumerate(batch):
+                                    param_prefix = f"c{i}_{idx}"
+                                    values_list.append(f"(:{param_prefix}_facility_id, :{param_prefix}_patient_account_number, :{param_prefix}_medical_record_number, :{param_prefix}_patient_name, :{param_prefix}_first_name, :{param_prefix}_last_name, :{param_prefix}_date_of_birth, :{param_prefix}_gender, :{param_prefix}_financial_class_id, :{param_prefix}_secondary_insurance)")
+                                    
+                                    params.update({
                                     f"{param_prefix}_facility_id": claim_record['facility_id'],
                                     f"{param_prefix}_patient_account_number": claim_record['patient_account_number'],
                                     f"{param_prefix}_medical_record_number": claim_record['medical_record_number'],
@@ -367,11 +371,12 @@ class BatchDatabaseOperations:
                                     f"{param_prefix}_gender": claim_record['gender'],
                                     f"{param_prefix}_financial_class_id": claim_record['financial_class_id'],
                                     f"{param_prefix}_secondary_insurance": claim_record['secondary_insurance']
-                                })
-                            
-                            batch_merge_query = text(f"""
+                                    })
+                                
+                                batch_merge_query = text(f"""
                                 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-                                MERGE dbo.claims AS target
+                                SET LOCK_TIMEOUT 5000;
+                                MERGE dbo.claims WITH (UPDLOCK, ROWLOCK) AS target
                                 USING (VALUES {', '.join(values_list)}) AS source (
                                     facility_id, patient_account_number, medical_record_number,
                                     patient_name, first_name, last_name, date_of_birth,
@@ -386,28 +391,28 @@ class BatchDatabaseOperations:
                                     VALUES (source.facility_id, source.patient_account_number, source.medical_record_number,
                                             source.patient_name, source.first_name, source.last_name, source.date_of_birth,
                                             source.gender, source.financial_class_id, source.secondary_insurance);
-                            """)
-                            
-                            conn.execute(batch_merge_query, params)
-                        
-                        successful_inserts = len(claims_to_insert)
-                        
-                    if line_items_to_insert:
-                        # Use batch MERGE for line items to reduce deadlocks
-                        line_batch_size = 50  # Smaller batches for line items
-                        
-                        for i in range(0, len(line_items_to_insert), line_batch_size):
-                            line_batch = line_items_to_insert[i:i + line_batch_size]
-                            
-                            # Build VALUES clause for batch MERGE
-                            line_values_list = []
-                            line_params = {}
-                            
-                            for idx, line_record in enumerate(line_batch):
-                                param_prefix = f"l{i}_{idx}"
-                                line_values_list.append(f"(:{param_prefix}_facility_id, :{param_prefix}_patient_account_number, :{param_prefix}_line_number, :{param_prefix}_procedure_code, :{param_prefix}_units, :{param_prefix}_charge_amount, :{param_prefix}_service_from_date, :{param_prefix}_service_to_date, :{param_prefix}_diagnosis_pointer, :{param_prefix}_rendering_provider_id)")
+                                """)
                                 
-                                line_params.update({
+                                conn.execute(batch_merge_query, params)
+                            
+                            successful_inserts = len(claims_to_insert)
+                        
+                        if line_items_to_insert:
+                            # Use batch MERGE for line items to reduce deadlocks
+                            line_batch_size = 25  # Even smaller batches for line items
+                            
+                            for i in range(0, len(line_items_to_insert), line_batch_size):
+                                line_batch = line_items_to_insert[i:i + line_batch_size]
+                                
+                                # Build VALUES clause for batch MERGE
+                                line_values_list = []
+                                line_params = {}
+                                
+                                for idx, line_record in enumerate(line_batch):
+                                    param_prefix = f"l{i}_{idx}"
+                                    line_values_list.append(f"(:{param_prefix}_facility_id, :{param_prefix}_patient_account_number, :{param_prefix}_line_number, :{param_prefix}_procedure_code, :{param_prefix}_units, :{param_prefix}_charge_amount, :{param_prefix}_service_from_date, :{param_prefix}_service_to_date, :{param_prefix}_diagnosis_pointer, :{param_prefix}_rendering_provider_id)")
+                                    
+                                    line_params.update({
                                     f"{param_prefix}_facility_id": line_record['facility_id'],
                                     f"{param_prefix}_patient_account_number": line_record['patient_account_number'],
                                     f"{param_prefix}_line_number": line_record['line_number'],
@@ -418,11 +423,12 @@ class BatchDatabaseOperations:
                                     f"{param_prefix}_service_to_date": line_record['service_to_date'],
                                     f"{param_prefix}_diagnosis_pointer": line_record['diagnosis_pointer'],
                                     f"{param_prefix}_rendering_provider_id": line_record['rendering_provider_id']
-                                })
-                            
-                            line_batch_merge_query = text(f"""
+                                    })
+                                
+                                line_batch_merge_query = text(f"""
                                 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
-                                MERGE dbo.claims_line_items AS target
+                                SET LOCK_TIMEOUT 5000;
+                                MERGE dbo.claims_line_items WITH (UPDLOCK, ROWLOCK) AS target
                                 USING (VALUES {', '.join(line_values_list)}) AS source (
                                     facility_id, patient_account_number, line_number,
                                     procedure_code, units, charge_amount,
@@ -441,15 +447,25 @@ class BatchDatabaseOperations:
                                             source.procedure_code, source.units, source.charge_amount,
                                             source.service_from_date, source.service_to_date,
                                             source.diagnosis_pointer, source.rendering_provider_id);
-                            """)
-                            
-                            conn.execute(line_batch_merge_query, line_params)
+                                """)
+                                
+                                conn.execute(line_batch_merge_query, line_params)
+                        
+                        conn.commit()
+                    break  # Success, exit retry loop
                     
-                    conn.commit()
-                    
-            except Exception as e:
-                logger.error(f"Sync SQL Server insert failed: {e}")
-                successful_inserts = 0
+                except Exception as e:
+                    error_str = str(e)
+                    if '1205' in error_str or 'deadlock' in error_str.lower():
+                        if retry < max_retries - 1:
+                            # Exponential backoff with jitter
+                            wait_time = (2 ** retry) + random.uniform(0, 1)
+                            logger.warning(f"Deadlock detected, retrying in {wait_time:.2f} seconds (attempt {retry + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                    logger.error(f"Sync SQL Server insert failed: {e}")
+                    successful_inserts = 0
+                    break
                 
             return successful_inserts
         
