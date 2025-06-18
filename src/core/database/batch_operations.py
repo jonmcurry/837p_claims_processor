@@ -45,6 +45,13 @@ class BatchDatabaseOperations:
                 # Build query conditionally to avoid parameter type issues
                 if batch_id is None:
                     query = text("""
+                        WITH limited_claims AS (
+                            SELECT id
+                            FROM claims
+                            WHERE processing_status = 'pending'
+                            ORDER BY priority DESC, created_at ASC, id ASC
+                            LIMIT :limit_val
+                        )
                         SELECT 
                             c.id as claim_id,
                             c.claim_id as claim_reference,
@@ -85,16 +92,23 @@ class BatchDatabaseOperations:
                             cli.diagnosis_pointers,
                             cli.modifier_codes
                         FROM claims c
+                        INNER JOIN limited_claims lc ON c.id = lc.id
                         LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
-                        WHERE c.processing_status = 'pending'
                         ORDER BY c.priority DESC, c.created_at ASC, c.id ASC
-                        LIMIT :limit_val
                     """)
                     params = {
                         'limit_val': limit or self.batch_sizes['claim_fetch']
                     }
                 else:
                     query = text("""
+                        WITH limited_claims AS (
+                            SELECT id
+                            FROM claims
+                            WHERE processing_status = 'pending'
+                            AND batch_id = :batch_id
+                            ORDER BY priority DESC, created_at ASC, id ASC
+                            LIMIT :limit_val
+                        )
                         SELECT 
                             c.id as claim_id,
                             c.claim_id as claim_reference,
@@ -135,11 +149,9 @@ class BatchDatabaseOperations:
                             cli.diagnosis_pointers,
                             cli.modifier_codes
                         FROM claims c
+                        INNER JOIN limited_claims lc ON c.id = lc.id
                         LEFT JOIN claim_line_items cli ON c.id = cli.claim_id
-                        WHERE c.processing_status = 'pending'
-                        AND c.batch_id = :batch_id
                         ORDER BY c.priority DESC, c.created_at ASC, c.id ASC
-                        LIMIT :limit_val
                     """)
                     params = {
                         'batch_id': batch_id,
