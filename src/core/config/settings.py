@@ -158,9 +158,10 @@ class Settings(BaseSettings):
     def sqlserver_url(self) -> str:
         """Construct SQL Server connection URL."""
         return (
-            f"mssql+pymssql://{self.sql_user}:"
+            f"mssql+pyodbc://{self.sql_user}:"
             f"{self.sql_password.get_secret_value()}@"
             f"{self.sql_host}:{self.sql_port}/{self.sql_database}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server"
         )
 
     @property
