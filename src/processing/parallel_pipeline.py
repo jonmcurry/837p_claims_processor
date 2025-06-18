@@ -70,20 +70,24 @@ class ParallelClaimsProcessor:
         self.worker_pool = WorkerPool()
         self.conversion_factor = Decimal("38.87")  # Default Medicare conversion factor
         
-        # Performance tuning parameters
+        # Performance tuning parameters optimized for 6,667+ claims/sec
         self.batch_sizes = {
             'fetch': 5000,          # Large fetch batches
-            'validation': 1000,     # Validation batch size
-            'rvu_calculation': 2000,  # RVU calculation batch size
-            'transfer': 1000,       # Transfer batch size
+            'validation': 2000,     # Larger validation batches
+            'rvu_calculation': 3000,  # Larger RVU calculation batches  
+            'transfer': 600,        # Smaller transfer batches for parallel processing
+            'memory_buffer': 10000, # In-memory aggregation buffer
         }
         
         # Concurrency limits for optimal throughput
         self.concurrency_limits = {
-            'validation': 50,       # High concurrency for validation
-            'rvu_calculation': 40,  # High concurrency for calculations
-            'transfer': 20,         # Higher concurrency for PostgreSQL production transfers
+            'validation': 100,      # Very high concurrency for validation
+            'rvu_calculation': 80,  # Very high concurrency for calculations
+            'transfer': 16,         # More concurrent transfers with smaller batches
         }
+        
+        # Memory optimization
+        self.memory_buffer = []  # In-memory claim buffer for batch optimization
         
     async def process_claims_parallel(self, batch_id: str = None, limit: int = None) -> ParallelProcessingResult:
         """Process claims with maximum parallelization for 6,667+ claims/second."""
@@ -180,16 +184,20 @@ class ParallelClaimsProcessor:
         await asyncio.gather(*initialization_tasks, return_exceptions=True)
         
     async def _process_large_dataset_in_batches(self, batch_id: str = None, total_limit: int = None, start_time: float = None) -> ParallelProcessingResult:
-        """Process large datasets by continuously fetching and processing batches."""
+        """Process large datasets using high-performance concurrent batch processing."""
         result = ParallelProcessingResult()
-        batch_size = 25000  # Process 25000 claims per batch for faster processing
+        batch_size = 25000  # Size of each batch
+        max_concurrent_batches = 2  # Process 2 batches concurrently for maximum throughput
+        
+        logger.info(f"Processing large dataset with concurrent batches of {batch_size} claims each")
+        
+        # Pre-fetch all batches to enable concurrent processing
+        all_batches = []
         processed_total = 0
         batch_number = 1
         
-        logger.info(f"Processing large dataset in batches of {batch_size} claims")
-        
+        # Fetch all batches first
         while True:
-            # Calculate remaining claims to process
             remaining_limit = None
             if total_limit:
                 remaining_limit = total_limit - processed_total
@@ -199,22 +207,49 @@ class ParallelClaimsProcessor:
             else:
                 batch_limit = batch_size
             
-            logger.info(f"Processing batch {batch_number} (up to {batch_limit} claims)")
-            
-            # Fetch current batch
-            stage_start = time.time()
+            logger.info(f"Fetching batch {batch_number} (up to {batch_limit} claims)")
             claims_data = await self._fetch_claims_parallel(batch_id, batch_limit)
-            fetch_time = time.time() - stage_start
-            
-            logger.info(f"Fetched {len(claims_data)} claims in batch {batch_number}")
             
             if not claims_data:
-                logger.info(f"No more claims to process. Completed {batch_number-1} batches.")
+                logger.info(f"No more claims to fetch. Got {len(all_batches)} batches total.")
                 break
                 
-            batch_result = await self._process_single_batch(claims_data)
+            all_batches.append((claims_data, batch_number))
+            processed_total += len(claims_data)
+            batch_number += 1
             
-            # Accumulate results
+            if len(claims_data) < batch_limit * 0.1:
+                logger.info(f"Reached end of available claims")
+                break
+        
+        if not all_batches:
+            logger.warning("No batches to process")
+            return result
+        
+        # Process batches concurrently for maximum throughput
+        logger.info(f"Processing {len(all_batches)} batches concurrently (max {max_concurrent_batches} at once)")
+        
+        semaphore = asyncio.Semaphore(max_concurrent_batches)
+        
+        async def process_batch_with_semaphore(batch_data, batch_num):
+            async with semaphore:
+                logger.info(f"Starting concurrent processing of batch {batch_num} ({len(batch_data)} claims)")
+                batch_start = time.time()
+                batch_result = await self._process_single_batch(batch_data)
+                batch_time = time.time() - batch_start
+                logger.info(f"Batch {batch_num} completed in {batch_time:.2f}s ({len(batch_data)/batch_time:.0f} claims/sec)")
+                return batch_result
+        
+        # Execute all batches concurrently
+        tasks = [process_batch_with_semaphore(claims_data, batch_num) for claims_data, batch_num in all_batches]
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Accumulate results from all batches
+        for i, batch_result in enumerate(batch_results):
+            if isinstance(batch_result, Exception):
+                logger.error(f"Batch {i+1} failed: {batch_result}")
+                continue
+                
             result.total_claims += batch_result.total_claims
             result.processed_claims += batch_result.processed_claims
             result.failed_claims += batch_result.failed_claims
@@ -225,25 +260,14 @@ class ParallelClaimsProcessor:
                     result.stage_times[stage] += time_taken
                 else:
                     result.stage_times[stage] = time_taken
-            
-            processed_total += len(claims_data)
-            batch_number += 1
-            
-            logger.info(f"Batch {batch_number-1} complete: {len(claims_data)} claims processed. "
-                       f"Total processed: {processed_total}")
-            
-            # Continue processing until we get no claims or very few claims
-            # (less than 10% of batch size suggests we're near the end)
-            if len(claims_data) < batch_limit * 0.1:
-                logger.info(f"Reached end of available claims (got {len(claims_data)} claims, less than 10% of {batch_limit})")
-                break
         
         # Calculate final metrics
         result.processing_time = time.time() - start_time
         result.throughput = result.total_claims / result.processing_time if result.processing_time > 0 else 0
         
-        logger.info(f"Large dataset processing complete: {result.total_claims} total claims, "
+        logger.info(f"Concurrent processing complete: {result.total_claims} total claims, "
                    f"{result.processed_claims} successful, {result.failed_claims} failed")
+        logger.info(f"Final throughput: {result.throughput:.1f} claims/second")
         
         return result
         

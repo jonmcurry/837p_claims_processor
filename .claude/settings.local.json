@@ -36,7 +36,10 @@
       "Bash(fi)",
       "Bash(mv:*)",
       "Bash(sqlcmd:*)",
-      "Bash(pip3 list:*)"
+      "Bash(pip3 list:*)",
+      "Bash(venv/bin/python process_claims_optimized.py:*)",
+      "Bash(venv/bin/pip install:*)",
+      "Bash(venv/bin/python -m pip install:*)"
     ],
     "deny": []
   }
